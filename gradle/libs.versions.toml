@@ -6,6 +6,13 @@ jetbrains-annotations = "26.0.2"
 
 # database
 jdbi = "3.50.0"
+postgresql = "42.7.8"
+mariadb = "3.5.6"
+
+# testing
+junit = "6.0.1"
+testcontainers = "1.20.5"
+hikaricp = "7.0.2"
 
 [libraries]
 
@@ -16,3 +23,16 @@ jetbrains-annotations = { group = "org.jetbrains", name = "annotations", version
 # database
 jdbi-core = { group = "org.jdbi", name = "jdbi3-core", version.ref = "jdbi" }
 jdbi-sqlobject = { group = "org.jdbi", name = "jdbi3-sqlobject", version.ref = "jdbi" }
+hikaricp = { group = "com.zaxxer", name = "HikariCP", version.ref = "hikaricp" }
+postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "postgresql" }
+mariadb = { group = "org.mariadb.jdbc", name = "mariadb-java-client", version.ref = "mariadb" }
+
+# testing
+junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junit" }
+junit-platform = { group = "org.junit.platform", name = "junit-platform-launcher" }
+testcontainers-junit = { group = "org.testcontainers", name = "junit-jupiter", version.ref = "testcontainers" }
+testcontainers-postgres = { group = "org.testcontainers", name = "postgresql", version.ref = "testcontainers" }
+testcontainers-mariadb = { group = "org.testcontainers", name = "mariadb", version.ref = "testcontainers" }
+
+[bundles]
+testing = ["junit-jupiter", "testcontainers-junit", "testcontainers-postgres", "testcontainers-mariadb"]
