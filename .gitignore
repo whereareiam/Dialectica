@@ -1,0 +1,8 @@
+# IDE files
+.vscode/
+.idea/
+
+# gradle
+.gradle/
+build/
+bin/
