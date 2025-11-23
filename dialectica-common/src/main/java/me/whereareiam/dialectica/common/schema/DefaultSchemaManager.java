@@ -52,6 +52,29 @@ public final class DefaultSchemaManager implements SchemaManager {
 	}
 
 	/**
+	 * Scans the specified package using a specific classloader.
+	 * Useful in plugin environments where the default classloader detection might not work.
+	 *
+	 * @param classLoader  the classloader to use for scanning
+	 * @param packageNames the package names to scan
+	 * @return this SchemaManager instance for method chaining
+	 */
+	public SchemaManager scanPackages(ClassLoader classLoader, String... packageNames) {
+		if (classLoader == null) return scanPackages(packageNames);
+
+		for (String packageName : packageNames) {
+			if (packageName == null || packageName.isEmpty()) continue;
+			if (scannedPackages.contains(packageName)) continue;
+
+			scannedPackages.add(packageName);
+			List<Class<?>> discoveredEntities = EntityScanner.scanPackage(packageName, classLoader);
+			registeredEntities.addAll(discoveredEntities);
+		}
+
+		return this;
+	}
+
+	/**
 	 * Registers an entity class manually.
 	 *
 	 * @param entityClass the entity class to register

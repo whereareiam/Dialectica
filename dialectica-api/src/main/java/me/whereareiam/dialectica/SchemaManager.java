@@ -9,11 +9,22 @@ package me.whereareiam.dialectica;
 public interface SchemaManager {
 	/**
 	 * Scans the specified package for classes annotated with {@link me.whereareiam.dialectica.annotation.Entity}.
+	 * Uses multiple classloader strategies to find classes in plugin environments.
 	 *
 	 * @param packageNames the package names to scan (e.g., "me.whereareiam.intercept.entity")
 	 * @return this SchemaManager instance for method chaining
 	 */
 	SchemaManager scanPackages(String... packageNames);
+
+	/**
+	 * Scans the specified package using a specific classloader.
+	 * Useful in plugin environments where the default classloader detection might not work.
+	 *
+	 * @param classLoader  the classloader to use for scanning
+	 * @param packageNames the package names to scan
+	 * @return this SchemaManager instance for method chaining
+	 */
+	SchemaManager scanPackages(ClassLoader classLoader, String... packageNames);
 
 	/**
 	 * Registers an entity class manually.

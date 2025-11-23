@@ -3,6 +3,7 @@
 # general
 lombok = "1.18.42"
 jetbrains-annotations = "26.0.2"
+classgraph = "4.8.184"
 
 # database
 jdbi = "3.50.0"
@@ -19,6 +20,7 @@ hikaricp = "7.0.2"
 # general
 lombok = { group = "org.projectlombok", name = "lombok", version.ref = "lombok" }
 jetbrains-annotations = { group = "org.jetbrains", name = "annotations", version.ref = "jetbrains-annotations" }
+classgraph = { group = "io.github.classgraph", name = "classgraph", version.ref = "classgraph" }
 
 # database
 jdbi-core = { group = "org.jdbi", name = "jdbi3-core", version.ref = "jdbi" }
