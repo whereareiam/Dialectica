@@ -1,6 +1,6 @@
 dependencies {
     api(project(":dialectica-api"))
-    compileOnly(rootProject.libs.classgraph)
+    implementation(rootProject.libs.classgraph)
 }
 
 publishing {
