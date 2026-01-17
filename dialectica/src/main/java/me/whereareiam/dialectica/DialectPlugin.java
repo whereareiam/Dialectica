@@ -3,7 +3,6 @@ package me.whereareiam.dialectica;
 import me.whereareiam.dialectica.common.DialectConfig;
 import me.whereareiam.dialectica.common.DialectLocator;
 import me.whereareiam.dialectica.common.handler.DialectHandlerFactory;
-import me.whereareiam.dialectica.type.DatabaseType;
 import org.jdbi.v3.core.Jdbi;
 import org.jdbi.v3.core.extension.Extensions;
 import org.jdbi.v3.core.spi.JdbiPlugin;
@@ -13,7 +12,7 @@ import org.jdbi.v3.sqlobject.SqlObjects;
  * Jdbi plugin that enables database-specific SQL resolution.
  * <p>
  * This plugin:
- * 1. Stores the {@link DatabaseType} in Jdbi's configuration
+ * 1. Stores the database type identifier in Jdbi's configuration
  * 2. Configures a custom {@link DialectLocator} that resolves SQL from {@link StatementProvider}
  * 3. Registers handler factory that wires Dialectica handlers
  * <p>
@@ -25,21 +24,22 @@ import org.jdbi.v3.sqlobject.SqlObjects;
  */
 @SuppressWarnings("unused")
 public final class DialectPlugin implements JdbiPlugin {
-	private final DatabaseType databaseType;
+	private final String databaseType;
 
 	/**
-	 * Creates a new DialectPlugin with the given DatabaseType.
+	 * Creates a new DialectPlugin with the given database type identifier.
 	 *
-	 * @param databaseType the database type (POSTGRES or MARIADB)
+	 * @param databaseType the database type identifier
 	 */
-	public DialectPlugin(DatabaseType databaseType) {
-		if (databaseType == null) throw new IllegalArgumentException("DatabaseType must not be null");
+	public DialectPlugin(String databaseType) {
+		if (databaseType == null || databaseType.isBlank())
+			throw new IllegalArgumentException("DatabaseType must not be null or blank");
 		this.databaseType = databaseType;
 	}
 
 	@Override
 	public void customizeJdbi(Jdbi jdbi) {
-		// Store DatabaseType in Jdbi config
+		// Store database type in Jdbi config
 		DialectConfig config = jdbi.getConfig().get(DialectConfig.class);
 		config.setDatabaseType(databaseType);
 

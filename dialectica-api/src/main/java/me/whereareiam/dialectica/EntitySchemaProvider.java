@@ -1,7 +1,6 @@
 package me.whereareiam.dialectica;
 
 import me.whereareiam.dialectica.annotation.Entity;
-import me.whereareiam.dialectica.type.DatabaseType;
 
 /**
  * Interface for providing database-specific DDL statements for entity table creation.
@@ -16,11 +15,9 @@ import me.whereareiam.dialectica.type.DatabaseType;
  *     private UUID uniqueId;
  *
  *     @Override
- *     public String getCreateTableStatement(DatabaseType type) {
- *         return switch (type) {
- *             case POSTGRES -> "CREATE TABLE IF NOT EXISTS players (...)";
- *             case MARIADB -> "CREATE TABLE IF NOT EXISTS players (...)";
- *         };
+ *     public String getCreateTableStatement(String type) {
+ *         if ("postgres".equals(type)) return "CREATE TABLE IF NOT EXISTS players (...)";
+ *         return "CREATE TABLE IF NOT EXISTS players (...)";
  *     }
  * }
  * }</pre>
@@ -30,10 +27,10 @@ public interface EntitySchemaProvider {
 	 * Gets the CREATE TABLE DDL statement for this entity.
 	 * The statement should use "CREATE TABLE IF NOT EXISTS" to be idempotent.
 	 *
-	 * @param databaseType the database type (affects syntax like auto-increment, data types)
+	 * @param databaseType the database type identifier (affects syntax like auto-increment, data types)
 	 * @return the DDL statement for creating the table
 	 */
-	String statement(DatabaseType databaseType);
+	String statement(String databaseType);
 
 	/**
 	 * Gets the table name for this entity.

@@ -11,7 +11,7 @@ import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -40,8 +40,8 @@ public class DialectUpdateIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testSingleStatementUpdate(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testSingleStatementUpdate(String type) {
 		Jdbi jdbi = getJdbi(type);
 		TestDao dao = jdbi.onDemand(TestDao.class);
 
@@ -55,8 +55,8 @@ public class DialectUpdateIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testMultipleStatementsForMariaDB(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testMultipleStatementsForMariaDB(String type) {
 		Jdbi jdbi = getJdbi(type);
 		TestDao dao = jdbi.onDemand(TestDao.class);
 
@@ -117,12 +117,14 @@ public class DialectUpdateIntegrationTest extends BaseTest {
 	public static class TruncateProvider extends BaseStatementProvider {
 		public TruncateProvider() {
 			super(
-					"TRUNCATE TABLE test_table RESTART IDENTITY CASCADE",
 					asList(
 							"DELETE FROM test_table",
 							"ALTER TABLE test_table AUTO_INCREMENT = 1"
-					)
+					),
+					DatabaseType.MARIADB,
+					DatabaseType.MYSQL
 			);
+			register("TRUNCATE TABLE test_table RESTART IDENTITY CASCADE", DatabaseType.POSTGRES);
 		}
 	}
 }

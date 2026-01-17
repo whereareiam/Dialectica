@@ -3,7 +3,6 @@ package me.whereareiam.dialectica.common;
 import me.whereareiam.dialectica.StatementProvider;
 import me.whereareiam.dialectica.annotation.DialectQuery;
 import me.whereareiam.dialectica.annotation.DialectUpdate;
-import me.whereareiam.dialectica.type.DatabaseType;
 import org.jdbi.v3.core.config.ConfigRegistry;
 import org.jdbi.v3.sqlobject.locator.AnnotationSqlLocator;
 import org.jdbi.v3.sqlobject.locator.SqlLocator;
@@ -44,10 +43,10 @@ public class DialectLocator implements SqlLocator {
 	}
 
 	private String resolveFromProvider(Class<? extends StatementProvider> providerClass, ConfigRegistry config) {
-		DatabaseType databaseType = DialectConfig.getDatabaseType(config);
+		String databaseType = DialectConfig.getDatabaseType(config);
 		if (databaseType == null)
 			throw new IllegalStateException(
-					"DatabaseType not configured. DialectPlugin must be installed with a DatabaseType.");
+					"Database type not configured. DialectPlugin must be installed with a database type.");
 
 		StatementProvider provider = checkedCreateInstance(providerClass);
 		return provider.getStatemenet(databaseType);

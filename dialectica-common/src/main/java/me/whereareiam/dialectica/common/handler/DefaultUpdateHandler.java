@@ -3,7 +3,6 @@ package me.whereareiam.dialectica.common.handler;
 import me.whereareiam.dialectica.StatementProvider;
 import me.whereareiam.dialectica.annotation.DialectUpdate;
 import me.whereareiam.dialectica.common.DialectConfig;
-import me.whereareiam.dialectica.type.DatabaseType;
 import org.jdbi.v3.core.config.ConfigRegistry;
 import org.jdbi.v3.core.extension.AttachedExtensionHandler;
 import org.jdbi.v3.core.extension.ExtensionHandler;
@@ -46,10 +45,10 @@ public class DefaultUpdateHandler implements ExtensionHandler {
 	@Override
 	public AttachedExtensionHandler attachTo(ConfigRegistry config, Object target) {
 		// Check if provider returns multiple statements
-		DatabaseType databaseType = DialectConfig.getDatabaseType(config);
+		String databaseType = DialectConfig.getDatabaseType(config);
 		if (databaseType == null)
 			throw new IllegalStateException(
-					"DatabaseType not configured. DialectPlugin must be installed with a DatabaseType.");
+					"Database type not configured. DialectPlugin must be installed with a database type.");
 
 		StatementProvider provider = checkedCreateInstance(providerClass);
 		List<String> statements = provider.getStatements(databaseType);

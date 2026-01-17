@@ -6,6 +6,7 @@ package me.whereareiam.dialectica;
  * This interface provides methods for registering entities and initializing database schemas.
  * Implementations are provided by the Dialectica library.
  */
+@SuppressWarnings("unused")
 public interface SchemaManager {
 	/**
 	 * Scans the specified package for classes annotated with {@link me.whereareiam.dialectica.annotation.Entity}.
@@ -54,7 +55,7 @@ public interface SchemaManager {
 	 * Initializes all registered entities by creating their tables.
 	 * Tables are created in dependency order.
 	 *
-	 * @throws IllegalStateException if Jdbi or DatabaseType is not configured
+	 * @throws IllegalStateException if Jdbi or database type is not configured
 	 */
 	void initialize();
 

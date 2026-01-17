@@ -12,7 +12,7 @@ import org.jdbi.v3.sqlobject.statement.SqlQuery;
 import org.jdbi.v3.sqlobject.statement.SqlUpdate;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -31,7 +31,7 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 	@BeforeEach
 	void setUp() {
 		// Clean up any existing tables
-		for (DatabaseType type : DatabaseType.values()) {
+		for (String type : List.of(DatabaseType.POSTGRES, DatabaseType.MARIADB)) {
 			Jdbi jdbi = getJdbi(type);
 			jdbi.useHandle(handle -> {
 				handle.execute("DROP TABLE IF EXISTS schema_test_users");
@@ -42,8 +42,8 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testManualEntityRegistration(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testManualEntityRegistration(String type) {
 		Jdbi jdbi = getJdbi(type);
 
 		SchemaManager schemaManager = Dialectica.schema(jdbi)
@@ -66,8 +66,8 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testDependencyOrdering(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testDependencyOrdering(String type) {
 		Jdbi jdbi = getJdbi(type);
 
 		// Register entities in wrong order (comments before posts, posts before users)
@@ -87,8 +87,8 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testTableNameFromAnnotation(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testTableNameFromAnnotation(String type) {
 		Jdbi jdbi = getJdbi(type);
 
 		SchemaManager schemaManager = Dialectica.schema(jdbi)
@@ -102,8 +102,8 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testIdempotentInitialization(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testIdempotentInitialization(String type) {
 		Jdbi jdbi = getJdbi(type);
 
 		SchemaManager schemaManager = Dialectica.schema(jdbi)
@@ -127,17 +127,17 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 		public String name;
 
 		@Override
-		public String statement(DatabaseType databaseType) {
-			return switch (databaseType) {
-				case POSTGRES -> "CREATE TABLE IF NOT EXISTS schema_test_users (" +
+		public String statement(String databaseType) {
+			if (DatabaseType.POSTGRES.equals(databaseType)) {
+				return "CREATE TABLE IF NOT EXISTS schema_test_users (" +
 						"id CHAR(36) PRIMARY KEY, " +
 						"name VARCHAR(100) NOT NULL" +
 						")";
-				case MARIADB -> "CREATE TABLE IF NOT EXISTS schema_test_users (" +
-						"id CHAR(36) PRIMARY KEY, " +
-						"name VARCHAR(100) NOT NULL" +
-						")";
-			};
+			}
+			return "CREATE TABLE IF NOT EXISTS schema_test_users (" +
+					"id CHAR(36) PRIMARY KEY, " +
+					"name VARCHAR(100) NOT NULL" +
+					")";
 		}
 	}
 
@@ -148,19 +148,19 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 		public String title;
 
 		@Override
-		public String statement(DatabaseType databaseType) {
-			return switch (databaseType) {
-				case POSTGRES -> "CREATE TABLE IF NOT EXISTS schema_test_posts (" +
+		public String statement(String databaseType) {
+			if (DatabaseType.POSTGRES.equals(databaseType)) {
+				return "CREATE TABLE IF NOT EXISTS schema_test_posts (" +
 						"id SERIAL PRIMARY KEY, " +
 						"user_id CHAR(36) NOT NULL, " +
 						"title VARCHAR(200) NOT NULL" +
 						")";
-				case MARIADB -> "CREATE TABLE IF NOT EXISTS schema_test_posts (" +
-						"id INT AUTO_INCREMENT PRIMARY KEY, " +
-						"user_id CHAR(36) NOT NULL, " +
-						"title VARCHAR(200) NOT NULL" +
-						")";
-			};
+			}
+			return "CREATE TABLE IF NOT EXISTS schema_test_posts (" +
+					"id INT AUTO_INCREMENT PRIMARY KEY, " +
+					"user_id CHAR(36) NOT NULL, " +
+					"title VARCHAR(200) NOT NULL" +
+					")";
 		}
 	}
 
@@ -171,19 +171,19 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 		public String content;
 
 		@Override
-		public String statement(DatabaseType databaseType) {
-			return switch (databaseType) {
-				case POSTGRES -> "CREATE TABLE IF NOT EXISTS schema_test_comments (" +
+		public String statement(String databaseType) {
+			if (DatabaseType.POSTGRES.equals(databaseType)) {
+				return "CREATE TABLE IF NOT EXISTS schema_test_comments (" +
 						"id SERIAL PRIMARY KEY, " +
 						"post_id BIGINT NOT NULL, " +
 						"content TEXT NOT NULL" +
 						")";
-				case MARIADB -> "CREATE TABLE IF NOT EXISTS schema_test_comments (" +
-						"id INT AUTO_INCREMENT PRIMARY KEY, " +
-						"post_id BIGINT NOT NULL, " +
-						"content TEXT NOT NULL" +
-						")";
-			};
+			}
+			return "CREATE TABLE IF NOT EXISTS schema_test_comments (" +
+					"id INT AUTO_INCREMENT PRIMARY KEY, " +
+					"post_id BIGINT NOT NULL, " +
+					"content TEXT NOT NULL" +
+					")";
 		}
 	}
 

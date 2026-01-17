@@ -1,11 +1,9 @@
 package me.whereareiam.dialectica;
 
-import me.whereareiam.dialectica.type.DatabaseType;
-
 import java.util.Collections;
-import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Base class for {@link StatementProvider} implementations that eliminates
@@ -46,8 +44,14 @@ import java.util.Map;
  */
 @SuppressWarnings("unused")
 public abstract class BaseStatementProvider implements StatementProvider {
-	private final Map<DatabaseType, String> sqlMap;
-	private final Map<DatabaseType, List<String>> multiStatementMap;
+	private final Map<String, String> sqlMap;
+	private final Map<String, List<String>> multiStatementMap;
+	private String defaultSql;
+
+	protected BaseStatementProvider() {
+		this.sqlMap = new ConcurrentHashMap<>();
+		this.multiStatementMap = new ConcurrentHashMap<>();
+	}
 
 	/**
 	 * Creates a provider with the same SQL for all database types.
@@ -55,60 +59,71 @@ public abstract class BaseStatementProvider implements StatementProvider {
 	 * @param sql the SQL statement to use for all database types
 	 */
 	protected BaseStatementProvider(String sql) {
-		this.sqlMap = new EnumMap<>(DatabaseType.class);
-		this.multiStatementMap = new EnumMap<>(DatabaseType.class);
-		for (DatabaseType type : DatabaseType.values()) {
-			this.sqlMap.put(type, sql);
+		this();
+		defaultSql(sql);
+	}
+
+	/**
+	 * Creates a provider with database-specific SQL for one or more types.
+	 *
+	 * @param statement the SQL statement to register
+	 * @param types     database type identifiers that should use this statement
+	 */
+	protected BaseStatementProvider(String statement, String... types) {
+		this();
+		register(statement, types);
+	}
+
+	/**
+	 * Creates a provider with multiple statements for one or more types.
+	 *
+	 * @param statements the list of SQL statements (executed in order)
+	 * @param types      database type identifiers that should use these statements
+	 */
+	protected BaseStatementProvider(List<String> statements, String... types) {
+		this();
+		register(statements, types);
+	}
+
+	protected final void defaultSql(String statement) {
+		this.defaultSql = statement;
+	}
+
+	protected final void register(String statement, String... types) {
+		if (types == null || types.length == 0)
+			throw new IllegalArgumentException("At least one database type must be provided");
+		for (String type : types) {
+			if (type == null || type.isBlank()) continue;
+			sqlMap.put(type, statement);
 		}
 	}
 
-	/**
-	 * Creates a provider with database-specific SQL.
-	 * The order of arguments is: POSTGRES, MARIADB
-	 *
-	 * @param postgresSql the SQL statement for PostgreSQL
-	 * @param mariaDbSql  the SQL statement for MariaDB
-	 */
-	protected BaseStatementProvider(String postgresSql, String mariaDbSql) {
-		this.sqlMap = new EnumMap<>(DatabaseType.class);
-		this.multiStatementMap = new EnumMap<>(DatabaseType.class);
-		this.sqlMap.put(DatabaseType.POSTGRES, postgresSql);
-		this.sqlMap.put(DatabaseType.MARIADB, mariaDbSql);
-	}
-
-	/**
-	 * Creates a provider with database-specific SQL, where MariaDB uses multiple statements.
-	 * The order of arguments is: POSTGRES (single statement), MARIADB (list of statements)
-	 *
-	 * @param postgresSql       the SQL statement for PostgreSQL
-	 * @param mariaDbStatements the list of SQL statements for MariaDB (executed in order)
-	 */
-	protected BaseStatementProvider(String postgresSql, List<String> mariaDbStatements) {
-		this.sqlMap = new EnumMap<>(DatabaseType.class);
-		this.multiStatementMap = new EnumMap<>(DatabaseType.class);
-		this.sqlMap.put(DatabaseType.POSTGRES, postgresSql);
-		this.multiStatementMap.put(DatabaseType.MARIADB, mariaDbStatements);
-		// For getStatemenet(), use the first statement
-		if (!mariaDbStatements.isEmpty()) {
-			this.sqlMap.put(DatabaseType.MARIADB, mariaDbStatements.get(0));
+	protected final void register(List<String> statements, String... types) {
+		if (types == null || types.length == 0)
+			throw new IllegalArgumentException("At least one database type must be provided");
+		for (String type : types) {
+			if (type == null || type.isBlank()) continue;
+			multiStatementMap.put(type, statements);
+			if (statements != null && !statements.isEmpty()) {
+				sqlMap.put(type, statements.get(0));
+			}
 		}
 	}
 
 	@Override
-	public final String getStatemenet(DatabaseType databaseType) {
+	public final String getStatemenet(String databaseType) {
 		String sql = sqlMap.get(databaseType);
-		if (sql == null) throw new IllegalStateException("No SQL defined for DatabaseType: " + databaseType);
+		if (sql != null) return sql;
+		if (defaultSql != null) return defaultSql;
 
-		return sql;
+		throw new IllegalStateException("No SQL defined for database type: " + databaseType);
 	}
 
 	@Override
-	public List<String> getStatements(DatabaseType databaseType) {
+	public List<String> getStatements(String databaseType) {
 		List<String> multiStatements = multiStatementMap.get(databaseType);
-		if (multiStatements != null) {
-			return multiStatements;
-		}
-		// Default: return single statement wrapped in a list
+		if (multiStatements != null) return multiStatements;
+
 		return Collections.singletonList(getStatemenet(databaseType));
 	}
 }

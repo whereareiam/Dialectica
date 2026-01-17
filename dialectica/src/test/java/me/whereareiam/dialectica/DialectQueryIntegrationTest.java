@@ -10,7 +10,7 @@ import org.jdbi.v3.sqlobject.config.RegisterRowMapper;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
-import org.junit.jupiter.params.provider.EnumSource;
+import org.junit.jupiter.params.provider.ValueSource;
 
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -41,8 +41,8 @@ public class DialectQueryIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testFindById(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testFindById(String type) {
 		Jdbi jdbi = getJdbi(type);
 		TestDao dao = jdbi.onDemand(TestDao.class);
 
@@ -53,8 +53,8 @@ public class DialectQueryIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testFindAll(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testFindAll(String type) {
 		Jdbi jdbi = getJdbi(type);
 		TestDao dao = jdbi.onDemand(TestDao.class);
 
@@ -66,8 +66,8 @@ public class DialectQueryIntegrationTest extends BaseTest {
 	}
 
 	@ParameterizedTest
-	@EnumSource(DatabaseType.class)
-	void testFindByName(DatabaseType type) {
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testFindByName(String type) {
 		Jdbi jdbi = getJdbi(type);
 		TestDao dao = jdbi.onDemand(TestDao.class);
 

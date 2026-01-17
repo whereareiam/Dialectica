@@ -4,7 +4,6 @@ import me.whereareiam.dialectica.EntitySchemaProvider;
 import me.whereareiam.dialectica.SchemaManager;
 import me.whereareiam.dialectica.annotation.Entity;
 import me.whereareiam.dialectica.common.DialectConfig;
-import me.whereareiam.dialectica.type.DatabaseType;
 import org.jdbi.v3.core.Jdbi;
 
 import java.util.*;
@@ -115,14 +114,14 @@ public final class DefaultSchemaManager implements SchemaManager {
 	 * Initializes all registered entities by creating their tables.
 	 * Tables are created in dependency order.
 	 *
-	 * @throws IllegalStateException if Jdbi or DatabaseType is not configured
+	 * @throws IllegalStateException if Jdbi or database type is not configured
 	 */
 	public void initialize() {
 		if (initialized && !lazyInitialization) return;
 
-		DatabaseType databaseType = DialectConfig.getDatabaseType(jdbi.getConfig());
+		String databaseType = DialectConfig.getDatabaseType(jdbi.getConfig());
 		if (databaseType == null)
-			throw new IllegalStateException("DatabaseType not configured. DialectPlugin must be installed with a DatabaseType.");
+			throw new IllegalStateException("Database type not configured. DialectPlugin must be installed with a database type.");
 
 		List<Class<?>> orderedEntities = resolveDependencies();
 		Set<String> createdTables = new HashSet<>();
@@ -150,7 +149,7 @@ public final class DefaultSchemaManager implements SchemaManager {
 					if (failOnError) throw new RuntimeException(message, e);
 
 					System.err.println("ERROR: " + message);
-					if (e instanceof RuntimeException) throw (RuntimeException) e;
+					throw (RuntimeException) e;
 				}
 			}
 		}));
@@ -168,9 +167,9 @@ public final class DefaultSchemaManager implements SchemaManager {
 
 		if (!registeredEntities.contains(entityClass)) registerEntity(entityClass);
 
-		DatabaseType databaseType = DialectConfig.getDatabaseType(jdbi.getConfig());
+		String databaseType = DialectConfig.getDatabaseType(jdbi.getConfig());
 		if (databaseType == null)
-			throw new IllegalStateException("DatabaseType not configured. DialectPlugin must be installed with a DatabaseType.");
+			throw new IllegalStateException("Database type not configured. DialectPlugin must be installed with a database type.");
 
 		// Initialize dependencies first
 		Entity annotation = entityClass.getAnnotation(Entity.class);

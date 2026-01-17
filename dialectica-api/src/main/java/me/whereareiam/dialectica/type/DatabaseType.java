@@ -1,16 +1,13 @@
 package me.whereareiam.dialectica.type;
 
 /**
- * Enum representing supported database types.
+ * String constants for known database dialects.
+ * <p>
+ * Dialectica uses string identifiers to allow custom/extended dialects.
  */
-public enum DatabaseType {
-	/**
-	 * PostgreSQL database
-	 */
-	POSTGRES,
-
-	/**
-	 * MariaDB database
-	 */
-	MARIADB
+public final class DatabaseType {
+	public static final String POSTGRES = "postgres";
+	public static final String MARIADB = "mariadb";
+	public static final String MYSQL = "mysql";
+	public static final String SQLITE = "sqlite";
 }

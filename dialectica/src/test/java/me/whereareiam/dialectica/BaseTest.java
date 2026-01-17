@@ -57,7 +57,7 @@ public abstract class BaseTest {
 		dataSources.clear();
 	}
 
-	private static Jdbi createJdbi(String jdbcUrl, String username, String password, DatabaseType databaseType) {
+	private static Jdbi createJdbi(String jdbcUrl, String username, String password, String databaseType) {
 		HikariConfig config = new HikariConfig();
 		config.setJdbcUrl(jdbcUrl);
 		config.setUsername(username);
@@ -74,11 +74,10 @@ public abstract class BaseTest {
 		return jdbi;
 	}
 
-	protected Jdbi getJdbi(DatabaseType type) {
-		return switch (type) {
-			case POSTGRES -> postgresJdbi;
-			case MARIADB -> mariaDbJdbi;
-		};
+	protected Jdbi getJdbi(String type) {
+		if (DatabaseType.POSTGRES.equals(type)) return postgresJdbi;
+		if (DatabaseType.MARIADB.equals(type)) return mariaDbJdbi;
+		throw new IllegalArgumentException("Unsupported database type: " + type);
 	}
 }
 
