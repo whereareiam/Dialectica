@@ -1,5 +1,10 @@
 package me.whereareiam.dialectica;
 
+import me.whereareiam.dialectica.migration.MigrationScopeBuilder;
+import org.jetbrains.annotations.NotNull;
+
+import java.util.function.Consumer;
+
 /**
  * Interface for managing database schema initialization.
  * <p>
@@ -34,6 +39,27 @@ public interface SchemaManager {
 	 * @return this SchemaManager instance for method chaining
 	 */
 	SchemaManager registerEntity(Class<?> entityClass);
+
+	/**
+	 * Registers a named schema migration scope.
+	 * Migrations are ordered and applied independently within each scope.
+	 *
+	 * @param scope   logical migration scope name
+	 * @param builder scope configuration callback
+	 * @return this SchemaManager instance for method chaining
+	 */
+	SchemaManager registerMigrationScope(
+			@NotNull String scope,
+			@NotNull Consumer<MigrationScopeBuilder> builder
+	);
+
+	/**
+	 * Overrides the default migration history table name.
+	 *
+	 * @param tableName migration history table name
+	 * @return this SchemaManager instance for method chaining
+	 */
+	SchemaManager setMigrationTable(@NotNull String tableName);
 
 	/**
 	 * Sets whether to use lazy initialization (create tables on first access).

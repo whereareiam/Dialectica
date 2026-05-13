@@ -1,6 +1,7 @@
 dependencies {
     api(project(":dialectica-api"))
     implementation(rootProject.libs.classgraph)
+    compileOnly(rootProject.libs.jetbrains.annotations)
 }
 
 publishing {
@@ -15,4 +16,3 @@ publishing {
         }
     }
 }
-

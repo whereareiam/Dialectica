@@ -1,25 +1,39 @@
 package me.whereareiam.dialectica.common.schema;
 
 import me.whereareiam.dialectica.EntitySchemaProvider;
+import me.whereareiam.dialectica.migration.MigrationScopeBuilder;
 import me.whereareiam.dialectica.SchemaManager;
+import me.whereareiam.dialectica.migration.SchemaMigration;
 import me.whereareiam.dialectica.annotation.Entity;
 import me.whereareiam.dialectica.common.DialectConfig;
+import me.whereareiam.dialectica.common.migration.DefaultMigrationScopeBuilder;
+import me.whereareiam.dialectica.common.migration.DefaultSchemaMigrationContext;
+import me.whereareiam.dialectica.common.migration.MigrationScanner;
+import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
+import org.jetbrains.annotations.NotNull;
 
+import java.lang.reflect.InvocationTargetException;
 import java.util.*;
+import java.util.function.Consumer;
 
 /**
  * Default implementation of {@link SchemaManager}.
  * Manages database schema initialization for entities marked with {@link Entity}.
  */
 public final class DefaultSchemaManager implements SchemaManager {
+	private static final String DEFAULT_MIGRATION_TABLE = "dialectica_schema_migrations";
+
 	private final Set<Class<?>> registeredEntities = new LinkedHashSet<>();
 	private final Set<String> scannedPackages = new HashSet<>();
+	private final Map<String, DefaultMigrationScopeBuilder> migrationScopes = new LinkedHashMap<>();
 	private final Jdbi jdbi;
 
 	private boolean lazyInitialization = false;
 	private boolean failOnError = true;
 	private boolean initialized = false;
+	private boolean migrationsApplied = false;
+	private String migrationTable = DEFAULT_MIGRATION_TABLE;
 
 	/**
 	 * Creates a new DefaultSchemaManager for the given Jdbi instance.
@@ -88,6 +102,23 @@ public final class DefaultSchemaManager implements SchemaManager {
 		return this;
 	}
 
+	public SchemaManager registerMigrationScope(
+			@NotNull String scope,
+			@NotNull Consumer<MigrationScopeBuilder> builder
+	) {
+		if (scope.isBlank()) throw new IllegalArgumentException("Migration scope must not be blank");
+
+        DefaultMigrationScopeBuilder scopeBuilder = migrationScopes.computeIfAbsent(scope, key -> new DefaultMigrationScopeBuilder());
+		builder.accept(scopeBuilder);
+		return this;
+	}
+
+	public SchemaManager setMigrationTable(@NotNull String tableName) {
+		if (tableName.isBlank()) throw new IllegalArgumentException("Migration table name must not be blank");
+		this.migrationTable = tableName;
+		return this;
+	}
+
 	/**
 	 * Sets whether to use lazy initialization (create tables on first access).
 	 *
@@ -125,8 +156,11 @@ public final class DefaultSchemaManager implements SchemaManager {
 
 		List<Class<?>> orderedEntities = resolveDependencies();
 		Set<String> createdTables = new HashSet<>();
+		Map<String, List<ResolvedMigration>> resolvedMigrations = resolveMigrations();
 
 		jdbi.useHandle(handle -> handle.useTransaction(transactionHandle -> {
+			applyMigrationsIfNeeded(transactionHandle, databaseType, resolvedMigrations);
+
 			for (Class<?> entityClass : orderedEntities) {
 				try {
 					EntitySchemaProvider provider = getSchemaProvider(entityClass);
@@ -171,6 +205,8 @@ public final class DefaultSchemaManager implements SchemaManager {
 		if (databaseType == null)
 			throw new IllegalStateException("Database type not configured. DialectPlugin must be installed with a database type.");
 
+		Map<String, List<ResolvedMigration>> resolvedMigrations = resolveMigrations();
+
 		// Initialize dependencies first
 		Entity annotation = entityClass.getAnnotation(Entity.class);
 		if (annotation != null)
@@ -180,6 +216,8 @@ public final class DefaultSchemaManager implements SchemaManager {
 		// Initialize this entity
 		jdbi.useHandle(handle -> {
 			try {
+				applyMigrationsIfNeeded(handle, databaseType, resolvedMigrations);
+
 				EntitySchemaProvider provider = getSchemaProvider(entityClass);
 				if (provider == null)
 					throw new IllegalStateException("Entity " + entityClass.getName() + " does not provide EntitySchemaProvider");
@@ -287,5 +325,136 @@ public final class DefaultSchemaManager implements SchemaManager {
 	private String toSnakeCase(String camelCase) {
 		return camelCase.replaceAll("([a-z])([A-Z])", "$1_$2").toLowerCase();
 	}
-}
 
+	private void applyMigrationsIfNeeded(
+			Handle handle,
+			String databaseType,
+			Map<String, List<ResolvedMigration>> resolvedMigrations
+	) {
+		if (migrationsApplied) return;
+		if (resolvedMigrations.isEmpty()) {
+			migrationsApplied = true;
+			return;
+		}
+
+		ensureMigrationTable(handle);
+		Set<String> appliedKeys = loadAppliedMigrationKeys(handle);
+		for (Map.Entry<String, List<ResolvedMigration>> entry : resolvedMigrations.entrySet()) {
+			String scope = entry.getKey();
+			for (ResolvedMigration migration : entry.getValue()) {
+				String key = migrationKey(scope, migration.version());
+				if (appliedKeys.contains(key))
+					continue;
+
+				try {
+					migration.migration().migrate(new DefaultSchemaMigrationContext(jdbi, handle, databaseType, scope));
+					recordMigration(handle, scope, migration);
+				} catch (Exception exception) {
+					throw new IllegalStateException(
+							"Failed to apply migration %s:%d (%s)".formatted(scope, migration.version(), migration.name()),
+							exception
+					);
+				}
+			}
+		}
+
+		migrationsApplied = true;
+	}
+
+	private @NotNull Map<String, List<ResolvedMigration>> resolveMigrations() {
+		Map<String, List<ResolvedMigration>> resolved = new LinkedHashMap<>();
+
+		for (Map.Entry<String, DefaultMigrationScopeBuilder> entry : migrationScopes.entrySet()) {
+			String scope = entry.getKey();
+			DefaultMigrationScopeBuilder builder = entry.getValue();
+			LinkedHashSet<Class<? extends SchemaMigration>> migrationClasses = new LinkedHashSet<>(builder.getMigrationClasses());
+
+			for (String packageName : builder.getPackageNames()) {
+				List<Class<? extends SchemaMigration>> discovered = builder.getClassLoader() == null
+						? MigrationScanner.scanPackage(packageName)
+						: MigrationScanner.scanPackage(packageName, builder.getClassLoader());
+				migrationClasses.addAll(discovered);
+			}
+
+			if (migrationClasses.isEmpty())
+				continue;
+
+			List<ResolvedMigration> migrations = new ArrayList<>();
+			Set<Integer> seenVersions = new HashSet<>();
+			for (Class<? extends SchemaMigration> migrationClass : migrationClasses) {
+				SchemaMigration migration = instantiateMigration(migrationClass);
+				if (!seenVersions.add(migration.version())) {
+					throw new IllegalStateException(
+							"Duplicate migration version %d registered for scope %s".formatted(migration.version(), scope)
+					);
+				}
+				migrations.add(new ResolvedMigration(migration.version(), migration.name(), migration));
+			}
+
+			migrations.sort(Comparator.comparingInt(ResolvedMigration::version));
+			resolved.put(scope, migrations);
+		}
+
+		return resolved;
+	}
+
+	private SchemaMigration instantiateMigration(Class<? extends SchemaMigration> migrationClass) {
+		try {
+			return migrationClass.getDeclaredConstructor().newInstance();
+		} catch (InstantiationException | IllegalAccessException | InvocationTargetException | NoSuchMethodException exception) {
+			throw new IllegalStateException("Failed to instantiate migration " + migrationClass.getName(), exception);
+		}
+	}
+
+	private void ensureMigrationTable(Handle handle) {
+		handle.execute("""
+				CREATE TABLE IF NOT EXISTS %s (
+					scope VARCHAR(128) NOT NULL,
+					version INT NOT NULL,
+					name VARCHAR(255) NOT NULL,
+					applied_at BIGINT NOT NULL,
+					PRIMARY KEY (scope, version)
+				)
+				""".formatted(migrationTable));
+	}
+
+	private Set<String> loadAppliedMigrationKeys(Handle handle) {
+		List<Map<String, Object>> rows = handle.createQuery("SELECT scope, version FROM " + migrationTable)
+				.mapToMap()
+				.list();
+
+		Set<String> appliedKeys = new HashSet<>();
+		for (Map<String, Object> row : rows) {
+			Object scope = row.get("scope");
+			Object version = row.get("version");
+			if (scope == null || version == null)
+				continue;
+			appliedKeys.add(migrationKey(String.valueOf(scope), ((Number) version).intValue()));
+		}
+		return appliedKeys;
+	}
+
+	private void recordMigration(
+			Handle handle,
+			String scope,
+			ResolvedMigration migration
+	) {
+		handle.createUpdate("INSERT INTO " + migrationTable + " (scope, version, name, applied_at) VALUES (:scope, :version, :name, :appliedAt)")
+				.bind("scope", scope)
+				.bind("version", migration.version())
+				.bind("name", migration.name())
+				.bind("appliedAt", System.currentTimeMillis())
+				.execute();
+	}
+
+	private String migrationKey(String scope, int version) {
+		return scope + ":" + version;
+	}
+
+	private record ResolvedMigration(
+			int version,
+			@NotNull String name,
+			@NotNull SchemaMigration migration
+	) {
+	}
+}
