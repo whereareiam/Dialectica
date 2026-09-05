@@ -1,3 +1,5 @@
+plugins { id("library") }
+
 dependencies {
     compileOnly(libs.jdbi.core)
     compileOnly(libs.jdbi.sqlobject)

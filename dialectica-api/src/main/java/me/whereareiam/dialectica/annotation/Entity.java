@@ -37,7 +37,7 @@ public @interface Entity {
 
 	/**
 	 * The schema version of this entity.
-	 * Used for future migration support. Defaults to 1.
+	 * Descriptive metadata only; Strata streams own executable migration versions. Defaults to 1.
 	 *
 	 * @return the schema version
 	 */

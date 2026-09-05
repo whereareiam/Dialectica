@@ -1,8 +1,11 @@
+plugins { id("library") }
+
 dependencies {
     api(project(":dialectica-api"))
     implementation(project(":dialectica-common"))
 
     // Test dependencies
+    testImplementation(rootProject.libs.h2)
     testImplementation(rootProject.libs.jdbi.core)
     testImplementation(rootProject.libs.jdbi.sqlobject)
     testImplementation(rootProject.libs.hikaricp)

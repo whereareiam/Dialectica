@@ -1,3 +1,5 @@
+plugins { id("library") }
+
 dependencies {
     api(project(":dialectica-api"))
     implementation(rootProject.libs.classgraph)
