@@ -12,7 +12,8 @@ mariadb = "3.5.6"
 
 # testing
 junit = "6.0.1"
-testcontainers = "1.20.5"
+h2 = "2.4.240"
+testcontainers = "1.21.4"
 hikaricp = "7.0.2"
 
 [libraries]
@@ -30,6 +31,7 @@ postgresql = { group = "org.postgresql", name = "postgresql", version.ref = "pos
 mariadb = { group = "org.mariadb.jdbc", name = "mariadb-java-client", version.ref = "mariadb" }
 
 # testing
+h2 = { module = "com.h2database:h2", version.ref = "h2" }
 junit-jupiter = { group = "org.junit.jupiter", name = "junit-jupiter", version.ref = "junit" }
 junit-platform = { group = "org.junit.platform", name = "junit-platform-launcher" }
 testcontainers-junit = { group = "org.testcontainers", name = "junit-jupiter", version.ref = "testcontainers" }

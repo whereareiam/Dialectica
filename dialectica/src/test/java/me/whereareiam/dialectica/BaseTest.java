@@ -19,6 +19,7 @@ import java.util.List;
  * Base class for Dialectica integration tests using Testcontainers.
  * Provides PostgreSQL and MariaDB containers and Jdbi instances.
  */
+@org.junit.jupiter.api.Tag("database-container")
 @Testcontainers
 public abstract class BaseTest {
 	@Container
