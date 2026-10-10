@@ -9,6 +9,7 @@ import org.testcontainers.containers.JdbcDatabaseContainer;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.CyclicBarrier;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -37,7 +38,22 @@ public class ConcurrentSchemaInitializationIntegrationTest extends BaseTest {
 		for (int round = 0; round < ROUNDS; round++) {
 			dropTables(type);
 
-			initializeConcurrently(type, false);
+			initializeConcurrently(type, type, false);
+
+			assertTablesExist(type, TABLES);
+		}
+	}
+
+	/**
+	 * An application may name its dialect in its own casing, such as an enum constant.
+	 */
+	@ParameterizedTest
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testConcurrentInitializationWithAnUppercaseDialectName(String type) throws Exception {
+		for (int round = 0; round < ROUNDS; round++) {
+			dropTables(type);
+
+			initializeConcurrently(type, type.toUpperCase(Locale.ROOT), false);
 
 			assertTablesExist(type, TABLES);
 		}
@@ -49,20 +65,20 @@ public class ConcurrentSchemaInitializationIntegrationTest extends BaseTest {
 		for (int round = 0; round < ROUNDS; round++) {
 			dropTables(type);
 
-			initializeConcurrently(type, true);
+			initializeConcurrently(type, type, true);
 
 			// Only the requested entity and its dependency are created
 			assertTablesExist(type, List.of("concurrent_test_sessions", "concurrent_test_accounts"));
 		}
 	}
 
-	private void initializeConcurrently(String type, boolean lazy) throws Exception {
+	private void initializeConcurrently(String type, String dialectName, boolean lazy) throws Exception {
 		CyclicBarrier start = new CyclicBarrier(INSTANCES);
 		ExecutorService executor = Executors.newFixedThreadPool(INSTANCES);
 		try {
 			List<Future<?>> instances = new ArrayList<>();
 			for (int instance = 0; instance < INSTANCES; instance++) {
-				SchemaManager schemaManager = Dialectica.schema(createInstanceJdbi(type))
+				SchemaManager schemaManager = Dialectica.schema(createInstanceJdbi(type, dialectName))
 						.setLazyInitialization(lazy)
 						.registerEntity(SessionEntity.class)
 						.registerEntity(MemberEntity.class)
@@ -84,10 +100,10 @@ public class ConcurrentSchemaInitializationIntegrationTest extends BaseTest {
 		}
 	}
 
-	private Jdbi createInstanceJdbi(String type) {
+	private Jdbi createInstanceJdbi(String type, String dialectName) {
 		JdbcDatabaseContainer<?> container = DatabaseType.POSTGRES.equals(type) ? postgresContainer : mariaDbContainer;
 		Jdbi jdbi = Jdbi.create(container.getJdbcUrl(), container.getUsername(), container.getPassword());
-		jdbi.installPlugin(new DialectPlugin(type));
+		jdbi.installPlugin(new DialectPlugin(dialectName));
 
 		return jdbi;
 	}
