@@ -175,7 +175,7 @@ public final class DefaultSchemaManager implements SchemaManager {
 	private void createTables(Collection<Class<?>> orderedEntities, String databaseType) {
 		// PostgreSQL aborts the whole transaction when one statement fails, so a statement that may
 		// fail without ending the initialization runs under a savepoint of its own.
-		boolean isolateStatements = !failOnError && DatabaseType.POSTGRES.equals(databaseType);
+		boolean isolateStatements = !failOnError && DatabaseType.POSTGRES.equalsIgnoreCase(databaseType);
 		Set<String> createdTables = new HashSet<>();
 
 		jdbi.useTransaction(handle -> {
