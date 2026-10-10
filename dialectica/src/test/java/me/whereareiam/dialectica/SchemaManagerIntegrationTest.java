@@ -37,6 +37,7 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 				handle.execute("DROP TABLE IF EXISTS schema_test_users");
 				handle.execute("DROP TABLE IF EXISTS schema_test_posts");
 				handle.execute("DROP TABLE IF EXISTS schema_test_comments");
+				handle.execute("DROP TABLE IF EXISTS schema_test_tags");
 			});
 		}
 	}
@@ -119,6 +120,52 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 		assertDoesNotThrow(dao::findAllUsers);
 	}
 
+	@ParameterizedTest
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testContinuesPastFailingEntity(String type) {
+		Jdbi jdbi = getJdbi(type);
+
+		// The broken entity sits between two valid ones
+		SchemaManager schemaManager = Dialectica.schema(jdbi)
+				.setFailOnError(false)
+				.registerEntity(UserEntity.class)
+				.registerEntity(BrokenEntity.class)
+				.registerEntity(TagEntity.class);
+
+		assertDoesNotThrow(schemaManager::initialize);
+
+		// Verify the tables around the failing entity were created and committed
+		assertTrue(tableExists(jdbi, "schema_test_users"));
+		assertTrue(tableExists(jdbi, "schema_test_tags"));
+	}
+
+	@ParameterizedTest
+	@ValueSource(strings = {DatabaseType.POSTGRES, DatabaseType.MARIADB})
+	void testFailsOnFailingEntityByDefault(String type) {
+		Jdbi jdbi = getJdbi(type);
+
+		SchemaManager schemaManager = Dialectica.schema(jdbi)
+				.registerEntity(UserEntity.class)
+				.registerEntity(BrokenEntity.class)
+				.registerEntity(TagEntity.class);
+
+		RuntimeException failure = assertThrows(RuntimeException.class, schemaManager::initialize);
+		assertTrue(failure.getMessage().contains(BrokenEntity.class.getName()));
+
+		// Nothing after the failing entity is created
+		assertFalse(tableExists(jdbi, "schema_test_tags"));
+		// PostgreSQL rolls the whole initialization back; MariaDB commits on every DDL statement
+		assertEquals(DatabaseType.MARIADB.equals(type), tableExists(jdbi, "schema_test_users"));
+	}
+
+	private boolean tableExists(Jdbi jdbi, String table) {
+		return jdbi.withHandle(handle -> handle
+				.createQuery("SELECT COUNT(*) FROM information_schema.tables WHERE table_name = :table")
+				.bind("table", table)
+				.mapTo(Integer.class)
+				.one()) == 1;
+	}
+
 	// Test Entities
 
 	@Entity(tableName = "schema_test_users", version = 1)
@@ -184,6 +231,22 @@ public class SchemaManagerIntegrationTest extends BaseTest {
 					"post_id BIGINT NOT NULL, " +
 					"content TEXT NOT NULL" +
 					")";
+		}
+	}
+
+	@Entity(tableName = "schema_test_broken", dependsOn = {UserEntity.class})
+	public static class BrokenEntity implements EntitySchemaProvider {
+		@Override
+		public String statement(String databaseType) {
+			return "CREATE TABLE IF NOT EXISTS schema_test_broken (id NO_SUCH_TYPE PRIMARY KEY)";
+		}
+	}
+
+	@Entity(tableName = "schema_test_tags", dependsOn = {BrokenEntity.class})
+	public static class TagEntity implements EntitySchemaProvider {
+		@Override
+		public String statement(String databaseType) {
+			return "CREATE TABLE IF NOT EXISTS schema_test_tags (id INT PRIMARY KEY)";
 		}
 	}
 

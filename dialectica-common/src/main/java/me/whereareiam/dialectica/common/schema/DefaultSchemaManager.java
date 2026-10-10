@@ -4,8 +4,10 @@ import me.whereareiam.dialectica.EntitySchemaProvider;
 import me.whereareiam.dialectica.SchemaManager;
 import me.whereareiam.dialectica.annotation.Entity;
 import me.whereareiam.dialectica.common.DialectConfig;
+import me.whereareiam.dialectica.common.schema.lock.SchemaLock;
+import me.whereareiam.dialectica.type.DatabaseType;
+import org.jdbi.v3.core.Handle;
 import org.jdbi.v3.core.Jdbi;
-import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.InvocationTargetException;
 import java.util.*;
@@ -15,6 +17,8 @@ import java.util.*;
  * Manages database schema initialization for entities marked with {@link Entity}.
  */
 public final class DefaultSchemaManager implements SchemaManager {
+
+	private static final String STATEMENT_SAVEPOINT = "dialectica_schema_statement";
 
 	private final Set<Class<?>> registeredEntities = new LinkedHashSet<>();
 	private final Set<String> scannedPackages = new HashSet<>();
@@ -106,6 +110,8 @@ public final class DefaultSchemaManager implements SchemaManager {
 
 	/**
 	 * Sets whether to fail on error or continue with other entities.
+	 * When continuing, a failed entity is reported and skipped, and the tables of the other
+	 * entities are still created and committed.
 	 *
 	 * @param failOnError true to fail on first error, false to continue
 	 * @return this SchemaManager instance for method chaining
@@ -117,89 +123,108 @@ public final class DefaultSchemaManager implements SchemaManager {
 
 	/**
 	 * Initializes all registered entities by creating their tables.
-	 * Tables are created in dependency order.
+	 * Tables are created in dependency order, in one transaction that holds the database's
+	 * {@link SchemaLock}, so instances that start together against one database wait for each other.
 	 *
 	 * @throws IllegalStateException if Jdbi or database type is not configured
 	 */
 	public void initialize() {
 		if (initialized && !lazyInitialization) return;
 
-		String databaseType = DialectConfig.getDatabaseType(jdbi.getConfig());
-		if (databaseType == null)
-			throw new IllegalStateException("Database type not configured. DialectPlugin must be installed with a database type.");
-
-		List<Class<?>> orderedEntities = resolveDependencies();
-		Set<String> createdTables = new HashSet<>();
-
-		jdbi.useHandle(handle -> handle.useTransaction(transactionHandle -> {
-
-			for (Class<?> entityClass : orderedEntities) {
-				try {
-					EntitySchemaProvider provider = getSchemaProvider(entityClass);
-					if (provider == null) {
-						String message = "Entity " + entityClass.getName() + " does not provide EntitySchemaProvider";
-						if (failOnError) throw new IllegalStateException(message);
-
-						System.err.println("WARNING: " + message);
-						continue;
-					}
-
-					String tableName = getTableName(entityClass, provider);
-					if (createdTables.contains(tableName)) continue;
-
-					String ddl = provider.statement(databaseType);
-					transactionHandle.execute(ddl);
-					createdTables.add(tableName);
-				} catch (Exception e) {
-					String message = "Failed to initialize entity " + entityClass.getName() + ": " + e.getMessage();
-					if (failOnError) throw new RuntimeException(message, e);
-
-					System.err.println("ERROR: " + message);
-					throw (RuntimeException) e;
-				}
-			}
-		}));
-
+		createTables(resolveDependencies(), requireDatabaseType());
 		initialized = true;
 	}
 
 	/**
 	 * Ensures a specific entity's table is initialized (for lazy initialization).
+	 * The entity's dependencies are created first, under the same lock and transaction as
+	 * {@link #initialize()}.
 	 *
 	 * @param entityClass the entity class to ensure is initialized
 	 */
 	public void ensureInitialized(Class<?> entityClass) {
 		if (!lazyInitialization || initialized) return;
 
-		if (!registeredEntities.contains(entityClass)) registerEntity(entityClass);
+		String databaseType = requireDatabaseType();
+		Set<Class<?>> orderedEntities = new LinkedHashSet<>();
+		collectWithDependencies(entityClass, orderedEntities, new HashSet<>());
 
+		createTables(orderedEntities, databaseType);
+	}
+
+	private String requireDatabaseType() {
 		String databaseType = DialectConfig.getDatabaseType(jdbi.getConfig());
 		if (databaseType == null)
 			throw new IllegalStateException("Database type not configured. DialectPlugin must be installed with a database type.");
 
+		return databaseType;
+	}
 
-		// Initialize dependencies first
-		Entity annotation = entityClass.getAnnotation(Entity.class);
-		if (annotation != null)
-			for (Class<?> dep : annotation.dependsOn())
-				ensureInitialized(dep);
+	private void collectWithDependencies(Class<?> entityClass, Set<Class<?>> ordered, Set<Class<?>> visiting) {
+		if (ordered.contains(entityClass)) return;
+		if (!visiting.add(entityClass))
+			throw new IllegalStateException("Circular dependency detected in entity definitions");
+		if (!registeredEntities.contains(entityClass)) registerEntity(entityClass);
 
-		// Initialize this entity
-		jdbi.useHandle(handle -> {
-			try {
+		for (Class<?> dependency : entityClass.getAnnotation(Entity.class).dependsOn())
+			collectWithDependencies(dependency, ordered, visiting);
 
-				EntitySchemaProvider provider = getSchemaProvider(entityClass);
-				if (provider == null)
-					throw new IllegalStateException("Entity " + entityClass.getName() + " does not provide EntitySchemaProvider");
+		ordered.add(entityClass);
+	}
 
-				String ddl = provider.statement(databaseType);
-				handle.execute(ddl);
-			} catch (Exception e) {
-				throw new RuntimeException("Failed to initialize entity " + entityClass.getName(), e);
+	private void createTables(Collection<Class<?>> orderedEntities, String databaseType) {
+		// PostgreSQL aborts the whole transaction when one statement fails, so a statement that may
+		// fail without ending the initialization runs under a savepoint of its own.
+		boolean isolateStatements = !failOnError && DatabaseType.POSTGRES.equals(databaseType);
+		Set<String> createdTables = new HashSet<>();
+
+		jdbi.useTransaction(handle -> {
+			try (SchemaLock lock = SchemaLock.acquire(handle, databaseType)) {
+				for (Class<?> entityClass : orderedEntities)
+					createTable(handle, entityClass, databaseType, createdTables, isolateStatements);
 			}
 		});
 	}
 
+	private void createTable(
+			Handle handle,
+			Class<?> entityClass,
+			String databaseType,
+			Set<String> createdTables,
+			boolean isolateStatement
+	) {
+		try {
+			EntitySchemaProvider provider = getSchemaProvider(entityClass);
+			if (provider == null)
+				throw new IllegalStateException("Entity " + entityClass.getName() + " does not provide EntitySchemaProvider");
+
+			String tableName = getTableName(entityClass, provider);
+			if (createdTables.contains(tableName)) return;
+
+			String ddl = provider.statement(databaseType);
+			if (isolateStatement) executeIsolated(handle, ddl);
+			else handle.execute(ddl);
+
+			createdTables.add(tableName);
+		} catch (Exception e) {
+			String message = "Failed to initialize entity " + entityClass.getName() + ": " + e.getMessage();
+			if (failOnError) throw new RuntimeException(message, e);
+
+			System.err.println("ERROR: " + message);
+		}
+	}
+
+	private void executeIsolated(Handle handle, String ddl) {
+		handle.savepoint(STATEMENT_SAVEPOINT);
+		try {
+			handle.execute(ddl);
+		} catch (Exception e) {
+			handle.rollbackToSavepoint(STATEMENT_SAVEPOINT);
+			throw e;
+		}
+
+		handle.releaseSavepoint(STATEMENT_SAVEPOINT);
+	}
 
 	private List<Class<?>> resolveDependencies() {
 		Map<Class<?>, Set<Class<?>>> dependencyGraph = new HashMap<>();

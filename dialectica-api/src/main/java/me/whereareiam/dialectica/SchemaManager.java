@@ -48,6 +48,8 @@ public interface SchemaManager {
 
 	/**
 	 * Sets whether to fail on error or continue with other entities.
+	 * When continuing, a failed entity is reported and skipped, and the tables of the other
+	 * entities are still created and committed.
 	 *
 	 * @param failOnError true to fail on first error, false to continue
 	 * @return this SchemaManager instance for method chaining
@@ -56,14 +58,18 @@ public interface SchemaManager {
 
 	/**
 	 * Initializes all registered entities by creating their tables.
-	 * Tables are created in dependency order.
+	 * Tables are created in dependency order. On PostgreSQL, MySQL and MariaDB the creation holds a
+	 * database lock, so instances that start at the same moment against one database wait for each
+	 * other instead of colliding.
 	 *
+	 * @throws IllegalStateException if the lock stays taken by another instance
 	 * @throws IllegalStateException if Jdbi or database type is not configured
 	 */
 	void initialize();
 
 	/**
 	 * Ensures a specific entity's table is initialized (for lazy initialization).
+	 * The entity's dependencies are created first, under the same lock as {@link #initialize()}.
 	 *
 	 * @param entityClass the entity class to ensure is initialized
 	 */
