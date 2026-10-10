@@ -48,6 +48,27 @@ Schema initialization follows declared entity dependencies.
 `StatementProvider` supplies dialect-specific statements to Dialectica's Jdbi
 handlers. Ordinary Jdbi operations remain available for application queries.
 
+## Concurrent startup
+
+Several instances may share one database and start at the same moment, as the
+proxies of a network do. `initialize()` and `ensureInitialized()` therefore create
+the tables while holding a database lock, so the instances wait for each other:
+
+| Database | Lock |
+|----------|------|
+| PostgreSQL | `pg_advisory_xact_lock`, held until the schema transaction commits or rolls back |
+| MySQL, MariaDB | `GET_LOCK('dialectica:schema:<database>', 60)`, released after the last statement |
+| SQLite, H2, other types | none; a single process owns the database |
+
+An instance that waits 60 seconds for the MySQL or MariaDB lock fails with an
+`IllegalStateException`. The lock is Dialectica's own and does not interfere with
+Strata's migration lock.
+
+PostgreSQL rolls a failed initialization back as a whole. MySQL and MariaDB commit
+on every DDL statement, so tables created before a failure remain. With
+`setFailOnError(false)` a failing entity is reported and skipped, and the tables of
+the remaining entities are still created and committed on every database.
+
 ## Migrations
 
 Installation upgrades belong to [Strata](https://github.com/whereareiam/strata).
