@@ -3,8 +3,8 @@ package me.whereareiam.dialectica.common.dialect;
 import me.whereareiam.dialectica.Dialect;
 import me.whereareiam.dialectica.dialect.SqlStatement;
 import me.whereareiam.dialectica.dialect.StatementRenderer;
-import me.whereareiam.dialectica.schema.Column;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -29,12 +29,12 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	}
 
 	@Override
-	public @NotNull SqlStatement insert(@NotNull Table table) {
+	public @NotNull SqlStatement insert(@NotNull TableDefinition table) {
 		return new SqlStatement("INSERT INTO " + identifier(table.getName()) + " " + columnList(table) + " VALUES " + markers(table), columns(table));
 	}
 
 	@Override
-	public @NotNull SqlStatement update(@NotNull Table table) {
+	public @NotNull SqlStatement update(@NotNull TableDefinition table) {
 		List<String> values = valueColumns(table);
 		if (values.isEmpty())
 			throw new IllegalArgumentException("Table " + table.getName() + " has no column outside its primary key to update");
@@ -47,13 +47,13 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	}
 
 	@Override
-	public @NotNull SqlStatement select(@NotNull Table table) {
+	public @NotNull SqlStatement select(@NotNull TableDefinition table) {
 		return new SqlStatement("SELECT " + join(columns(table), ", ", this::identifier) + " FROM " + identifier(table.getName())
 				+ " WHERE " + keyCondition(table), table.getPrimaryKey());
 	}
 
 	@Override
-	public @NotNull SqlStatement delete(@NotNull Table table) {
+	public @NotNull SqlStatement delete(@NotNull TableDefinition table) {
 		return new SqlStatement("DELETE FROM " + identifier(table.getName()) + " WHERE " + keyCondition(table), table.getPrimaryKey());
 	}
 
@@ -65,7 +65,7 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	 * @param table table to write to
 	 * @return the statement, parameterized by every column in table order
 	 */
-	protected final @NotNull SqlStatement insertOnConflict(@NotNull Table table) {
+	protected final @NotNull SqlStatement insertOnConflict(@NotNull TableDefinition table) {
 		requireKey(table);
 		List<String> values = valueColumns(table);
 		String action = values.isEmpty()
@@ -101,8 +101,8 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	 * @param table table
 	 * @return the column names
 	 */
-	protected static @NotNull List<String> columns(@NotNull Table table) {
-		return table.getColumns().stream().map(Column::getName).toList();
+	protected static @NotNull List<String> columns(@NotNull TableDefinition table) {
+		return table.getColumns().stream().map(ColumnDefinition::getName).toList();
 	}
 
 	/**
@@ -111,7 +111,7 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	 * @param table table
 	 * @return the column names outside the key
 	 */
-	protected static @NotNull List<String> valueColumns(@NotNull Table table) {
+	protected static @NotNull List<String> valueColumns(@NotNull TableDefinition table) {
 		return columns(table).stream().filter(column -> !table.getPrimaryKey().contains(column)).toList();
 	}
 
@@ -121,7 +121,7 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	 * @param table table
 	 * @return the parameter markers
 	 */
-	protected static @NotNull String markers(@NotNull Table table) {
+	protected static @NotNull String markers(@NotNull TableDefinition table) {
 		return "(" + join(columns(table), ", ", column -> "?") + ")";
 	}
 
@@ -131,7 +131,7 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	 * @param table table
 	 * @throws IllegalArgumentException when the table has no primary key
 	 */
-	protected static void requireKey(@NotNull Table table) {
+	protected static void requireKey(@NotNull TableDefinition table) {
 		if (table.getPrimaryKey().isEmpty())
 			throw new IllegalArgumentException("Table " + table.getName() + " has no primary key");
 	}
@@ -152,11 +152,11 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 		return joiner.toString();
 	}
 
-	private String columnList(Table table) {
+	private String columnList(TableDefinition table) {
 		return identifiers(columns(table));
 	}
 
-	private String keyCondition(Table table) {
+	private String keyCondition(TableDefinition table) {
 		requireKey(table);
 
 		return join(table.getPrimaryKey(), " AND ", column -> identifier(column) + " = ?");

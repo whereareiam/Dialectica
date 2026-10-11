@@ -2,6 +2,7 @@ package me.whereareiam.dialectica.adapter.jdbi.binding;
 
 import me.whereareiam.dialectica.Dialect;
 import me.whereareiam.dialectica.adapter.jdbi.DialecticaConfig;
+import me.whereareiam.dialectica.adapter.jdbi.DialecticaPlugin;
 import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.jdbi.v3.core.config.ConfigRegistry;
 import org.jdbi.v3.core.mapper.ColumnMapper;
@@ -12,7 +13,7 @@ import java.util.Optional;
 
 /**
  * Reads {@link java.util.UUID} and {@link Boolean} columns through the dialect that
- * {@link me.whereareiam.dialectica.adapter.jdbi.DialecticaPlugin} chose; the plugin registers it. A
+ * {@link DialecticaPlugin} chose; the plugin registers it. A
  * primitive {@code boolean} reads {@code NULL} as {@code false}, as Jdbi does for primitives.
  */
 public final class DialectColumnMapperFactory implements ColumnMapperFactory {

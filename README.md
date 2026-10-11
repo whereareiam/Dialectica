@@ -15,15 +15,15 @@ repositories {
 
 dependencies {
     // The entry point and the dialects of the databases you support:
-    implementation("me.whereareiam:dialectica:2.0.0")
-    implementation("me.whereareiam:dialectica-dialect-sqlite:2.0.0")
-    implementation("me.whereareiam:dialectica-dialect-postgresql:2.0.0")
+    implementation("me.whereareiam:dialectica:3.0.0")
+    implementation("me.whereareiam:dialectica-dialect-sqlite:3.0.0")
+    implementation("me.whereareiam:dialectica-dialect-postgresql:3.0.0")
 
     // Or the entry point with all five dialects:
-    implementation("me.whereareiam:dialectica-bundle:2.0.0")
+    implementation("me.whereareiam:dialectica-bundle:3.0.0")
 
     // Jdbi access to entities:
-    implementation("me.whereareiam:dialectica-adapter-jdbi:2.0.0")
+    implementation("me.whereareiam:dialectica-adapter-jdbi:3.0.0")
 
     // Your database's JDBC driver, and Jdbi when you use the adapter.
 }
@@ -83,13 +83,28 @@ Every non-static, non-transient field the type declares is a column, in declarat
 | `@Length(n)` | A `String` stored as `varchar(n)`; a `String` without it is unlimited `text` |
 | `@Nullable` | The column accepts `NULL`; columns refuse it otherwise |
 | `@References(entity = X.class, onDelete = ...)` | A foreign key to `X`'s primary key, which must be a single `@Id` field |
+| `@ForeignKey(fields = {"fieldA", "fieldB"}, entity = X.class, onDelete = ...)` | A foreign key over fields to `X`'s whole primary key, one field for each of `X`'s `@Id` fields in their order; repeatable |
 | `@Unique({"fieldA", "fieldB"})` | A unique constraint over fields; repeatable |
 | `@Index(name = "...", columns = {...}, unique = ...)` | An index over fields; repeatable |
 
-`@Unique` and `@Index` name fields, not columns. Any annotation named `Nullable` that is visible
-at runtime also counts, such as Jakarta's or JSR-305's. JetBrains' `@Nullable` is not visible at
-runtime, so a field carrying only that annotation is stored `NOT NULL`. Key fields and primitive
-fields cannot be nullable.
+`@Unique`, `@Index` and `@ForeignKey` name fields, not columns. A foreign key to a composite key
+names the referencing fields in the order of the referenced `@Id` fields, and each of them has the
+Java type of the key field it references:
+
+```java
+@Table("identica_provider_profiles")
+@ForeignKey(fields = {"providerId", "providerSubject"}, entity = ProviderLink.class,
+        onDelete = ReferentialAction.CASCADE)
+public record ProviderProfile(
+        @Id @Length(64) String providerId,
+        @Id @Length(128) String providerSubject,
+        @Length(64) String providerUsername
+) {}
+```
+
+Any annotation named `Nullable` that is visible at runtime also counts, such as Jakarta's or
+JSR-305's. JetBrains' `@Nullable` is not visible at runtime, so a field carrying only that
+annotation is stored `NOT NULL`. Key fields and primitive fields cannot be nullable.
 
 | Java type | Column type | SQLite | H2 | PostgreSQL | MySQL, MariaDB |
 |-----------|-------------|--------|----|------------|----------------|
@@ -109,7 +124,7 @@ every column field in order, as Lombok's `@AllArgsConstructor` does, or else thr
 constructor without parameters followed by setters or field writes.
 
 `Dialectica.entity(Account.class)` returns an `EntityTable<Account>`. Its `table()` is the
-schema-level `Table`, and its `columns()` are typed `Column<Account, V>`s that read values from
+schema-level `TableDefinition`, and its `columns()` are typed `EntityColumn<Account, V>`s that read values from
 an entity. The rest of Dialectica only works with this model. A table can also be written by hand
 by extending `EntityTable`: give the constructor typed columns and the keys, and implement
 `create(Row)`. The `EntityTable` Javadoc has an example.
@@ -140,18 +155,20 @@ core table referenced by an add-on's schema; that table has to exist first.
 Tables can also be declared without an entity:
 
 ```java
-Table accounts = Table.builder("identica_accounts")
-        .column(Column.builder("unique_id", ColumnType.uuid()).notNull().build())
-        .column(Column.builder("username", ColumnType.varchar(64)).notNull().build())
-        .column(Column.builder("is_locked", ColumnType.bool()).notNull().defaultValue(false).build())
+TableDefinition accounts = TableDefinition.builder("identica_accounts")
+        .column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+        .column(ColumnDefinition.builder("username", ColumnType.varchar(64)).notNull().build())
+        .column(ColumnDefinition.builder("is_locked", ColumnType.bool()).notNull().defaultValue(false).build())
         .primaryKey("unique_id")
-        .index(Index.plain("identica_accounts_username", "username"))
+        .index(IndexDefinition.plain("identica_accounts_username", "username"))
         .build();
 ```
 
-Here `Column`, `Table` and `Index` are the schema types in `me.whereareiam.dialectica.schema`.
-`ForeignKey.builder(columns...).references(table, columns...).onDelete(...)` and
-`Table.Builder.unique(...)` declare the other keys. A primary key column must be `notNull()`.
+`TableDefinition`, `ColumnDefinition`, `IndexDefinition` and `ForeignKeyDefinition` are the schema
+model in `me.whereareiam.dialectica.schema`; the annotations `@Table`, `@Column`, `@Index` and
+`@ForeignKey` describe an entity and are read into it.
+`ForeignKeyDefinition.builder(columns...).references(table, columns...).onDelete(...)` and
+`TableDefinition.Builder.unique(...)` declare the other keys. A primary key column must be `notNull()`.
 `defaultValue` takes text, a number or a boolean. MySQL accepts a text column's default only as an
 expression, which needs MySQL 8.0.13 or newer.
 
@@ -161,8 +178,8 @@ An installed schema grows through changes, applied in order:
 
 ```java
 Dialectica.on(connection).apply(
-        new AddColumn("identica_accounts", Column.builder("last_seen_at", ColumnType.bigint()).build()),
-        new CreateIndex("identica_accounts", Index.plain("identica_accounts_last_seen_at", "last_seen_at")),
+        new AddColumn("identica_accounts", ColumnDefinition.builder("last_seen_at", ColumnType.bigint()).build()),
+        new CreateIndex("identica_accounts", IndexDefinition.plain("identica_accounts_last_seen_at", "last_seen_at")),
         new DropColumn("identica_accounts", "created_at"),
         new RenameTable("identica_cracked_accounts", "identica_credential_accounts")
 );

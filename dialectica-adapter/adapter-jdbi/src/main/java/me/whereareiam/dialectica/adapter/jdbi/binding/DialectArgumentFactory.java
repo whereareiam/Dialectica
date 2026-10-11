@@ -2,6 +2,7 @@ package me.whereareiam.dialectica.adapter.jdbi.binding;
 
 import me.whereareiam.dialectica.Dialect;
 import me.whereareiam.dialectica.adapter.jdbi.DialecticaConfig;
+import me.whereareiam.dialectica.adapter.jdbi.DialecticaPlugin;
 import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.jdbi.v3.core.argument.Argument;
 import org.jdbi.v3.core.argument.ArgumentFactory;
@@ -14,7 +15,7 @@ import java.util.function.Function;
 
 /**
  * Binds {@link java.util.UUID} and {@link Boolean} parameters through the dialect that
- * {@link me.whereareiam.dialectica.adapter.jdbi.DialecticaPlugin} chose; the plugin registers it.
+ * {@link DialecticaPlugin} chose; the plugin registers it.
  */
 public final class DialectArgumentFactory implements ArgumentFactory.Preparable {
 	/**

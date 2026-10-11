@@ -3,7 +3,7 @@ package me.whereareiam.dialectica.dialect.mysql;
 import me.whereareiam.dialectica.Dialect;
 import me.whereareiam.dialectica.common.dialect.AnsiStatementRenderer;
 import me.whereareiam.dialectica.dialect.SqlStatement;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.List;
@@ -24,7 +24,7 @@ public class MysqlStatementRenderer extends AnsiStatementRenderer {
 	}
 
 	@Override
-	public @NotNull SqlStatement upsert(@NotNull Table table) {
+	public @NotNull SqlStatement upsert(@NotNull TableDefinition table) {
 		requireKey(table);
 		List<String> values = valueColumns(table);
 		List<String> updated = values.isEmpty() ? table.getPrimaryKey().subList(0, 1) : values;

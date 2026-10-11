@@ -28,9 +28,9 @@ public final class Schema {
 	/**
 	 * Tables, in the order they were declared.
 	 */
-	private final @NotNull List<Table> tables;
+	private final @NotNull List<TableDefinition> tables;
 
-	private Schema(@NotNull List<Table> tables) {
+	private Schema(@NotNull List<TableDefinition> tables) {
 		this.tables = tables;
 	}
 
@@ -41,10 +41,10 @@ public final class Schema {
 	 * @return the schema
 	 * @throws IllegalArgumentException when two tables have the same name
 	 */
-	public static @NotNull Schema of(@NotNull Table... tables) {
-		List<Table> declared = List.copyOf(Arrays.asList(Objects.requireNonNull(tables, "tables")));
+	public static @NotNull Schema of(@NotNull TableDefinition... tables) {
+		List<TableDefinition> declared = List.copyOf(Arrays.asList(Objects.requireNonNull(tables, "tables")));
 		Set<String> names = new HashSet<>();
-		for (Table table : declared)
+		for (TableDefinition table : declared)
 			if (!names.add(table.getName()))
 				throw new IllegalArgumentException("The schema declares table " + table.getName() + " twice");
 

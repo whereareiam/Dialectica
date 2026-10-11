@@ -8,6 +8,8 @@ import lombok.Value;
 import me.whereareiam.dialectica.entity.EntityColumn;
 import me.whereareiam.dialectica.entity.EntityTable;
 import me.whereareiam.dialectica.entity.Row;
+import me.whereareiam.dialectica.entity.annotation.Column;
+import me.whereareiam.dialectica.entity.annotation.ForeignKey;
 import me.whereareiam.dialectica.entity.annotation.Id;
 import me.whereareiam.dialectica.entity.annotation.Index;
 import me.whereareiam.dialectica.entity.annotation.Length;
@@ -15,7 +17,7 @@ import me.whereareiam.dialectica.entity.annotation.Nullable;
 import me.whereareiam.dialectica.entity.annotation.References;
 import me.whereareiam.dialectica.entity.annotation.Table;
 import me.whereareiam.dialectica.entity.annotation.Unique;
-import me.whereareiam.dialectica.schema.ForeignKey;
+import me.whereareiam.dialectica.schema.ForeignKeyDefinition;
 import me.whereareiam.dialectica.schema.type.ColumnType;
 import me.whereareiam.dialectica.schema.type.ReferentialAction;
 import org.junit.jupiter.api.Test;
@@ -55,7 +57,7 @@ class EntityReaderTest {
 		private String providerSubject;
 		@References(entity = Account.class, onDelete = ReferentialAction.CASCADE)
 		private UUID uniqueId;
-		@me.whereareiam.dialectica.entity.annotation.Column("is_primary")
+		@Column("is_primary")
 		private boolean primary;
 		@Nullable
 		private Long linkedAt;
@@ -85,6 +87,12 @@ class EntityReaderTest {
 		@Jakarta.Nullable
 		Long parentId;
 		String token;
+	}
+
+	@Table("identica_provider_profiles")
+	@ForeignKey(fields = {"subject", "provider"}, entity = ProviderLink.class, onDelete = ReferentialAction.CASCADE)
+	@ForeignKey(fields = "owner", entity = Account.class)
+	record ProviderProfile(@Length(128) String subject, @Id @Length(64) String provider, @Id @Length(64) String username, UUID owner) {
 	}
 
 	@Test
@@ -118,7 +126,7 @@ class EntityReaderTest {
 		assertEquals(List.of("unique_id", "is_primary"), table.table().getIndexes().get(0).getColumns());
 		assertTrue(table.table().getIndexes().get(0).isUnique());
 
-		ForeignKey foreignKey = table.table().getForeignKeys().get(0);
+		ForeignKeyDefinition foreignKey = table.table().getForeignKeys().get(0);
 		assertEquals("identica_accounts", foreignKey.getReferencedTable());
 		assertEquals(List.of("unique_id"), foreignKey.getReferencedColumns());
 		assertEquals(ReferentialAction.CASCADE, foreignKey.getOnDelete());
@@ -153,6 +161,22 @@ class EntityReaderTest {
 		assertEquals(new Session(7, null, "token"), table.create(row(table, Map.of("id", 7L, "token", "token"))));
 	}
 
+	@Test
+	void readsForeignKeysToTheWholeKeyOfAnotherEntity() {
+		EntityTable<ProviderProfile> table = EntityReader.read(ProviderProfile.class);
+
+		List<ForeignKeyDefinition> foreignKeys = table.table().getForeignKeys();
+		assertEquals(2, foreignKeys.size());
+		assertEquals(List.of("subject", "provider"), foreignKeys.get(0).getColumns());
+		assertEquals("identica_provider_links", foreignKeys.get(0).getReferencedTable());
+		assertEquals(List.of("provider_id", "provider_subject"), foreignKeys.get(0).getReferencedColumns());
+		assertEquals(ReferentialAction.CASCADE, foreignKeys.get(0).getOnDelete());
+		assertEquals(List.of("owner"), foreignKeys.get(1).getColumns());
+		assertEquals("identica_accounts", foreignKeys.get(1).getReferencedTable());
+		assertEquals(List.of("unique_id"), foreignKeys.get(1).getReferencedColumns());
+		assertEquals(ReferentialAction.NO_ACTION, foreignKeys.get(1).getOnDelete());
+	}
+
 	@Table("broken")
 	record UnsupportedType(@Id UUID id, double score) {
 	}
@@ -176,6 +200,30 @@ class EntityReaderTest {
 
 	@Table("broken")
 	record ReferenceToCompositeKey(@Id UUID id, @References(entity = ProviderLink.class) @Length(64) String link) {
+	}
+
+	@Table("broken")
+	@ForeignKey(fields = "provider", entity = ProviderLink.class)
+	record ForeignKeyTooShort(@Id @Length(64) String provider) {
+	}
+
+	@Table("broken")
+	@ForeignKey(fields = {"provider", "subject"}, entity = ProviderLink.class)
+	record ForeignKeyOfAnotherType(@Id @Length(64) String provider, long subject) {
+	}
+
+	@Table("broken")
+	@ForeignKey(fields = {"provider", "missing"}, entity = ProviderLink.class)
+	record ForeignKeyToUnknownField(@Id @Length(64) String provider) {
+	}
+
+	@Table("broken")
+	@ForeignKey(fields = "id", entity = Keyless.class)
+	record ForeignKeyToKeylessEntity(@Id UUID id) {
+	}
+
+	@Table("keyless")
+	record Keyless(UUID id) {
 	}
 
 	record NotAnnotated(UUID id) {
@@ -202,6 +250,10 @@ class EntityReaderTest {
 		assertMessage(NullableKey.class, "id", "key field cannot be nullable");
 		assertMessage(UnknownUniqueField.class, "missing", "no column field");
 		assertMessage(ReferenceToCompositeKey.class, "ProviderLink", "exactly one @Id field");
+		assertMessage(ForeignKeyTooShort.class, "[provider]", "must name 2 fields");
+		assertMessage(ForeignKeyOfAnotherType.class, "subject", "of type java.lang.String, not long");
+		assertMessage(ForeignKeyToUnknownField.class, "missing", "no column field");
+		assertMessage(ForeignKeyToKeylessEntity.class, "Keyless", "needs an @Id field");
 		assertMessage(NotAnnotated.class, "NotAnnotated", "not annotated with @Table");
 		assertMessage(NoUsableConstructor.class, "NoUsableConstructor", "needs a constructor");
 	}

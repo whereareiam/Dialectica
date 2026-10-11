@@ -8,8 +8,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class SchemaTest {
 	@Test
 	void refusesTwoTablesOfOneName() {
-		Table table = Table.builder("identica_accounts")
-				.column(Column.builder("username", ColumnType.varchar(64)).build())
+		TableDefinition table = TableDefinition.builder("identica_accounts")
+				.column(ColumnDefinition.builder("username", ColumnType.varchar(64)).build())
 				.build();
 
 		assertThrows(IllegalArgumentException.class, () -> Schema.of(table, table));

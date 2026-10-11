@@ -1,6 +1,6 @@
 package me.whereareiam.dialectica.entity;
 
-import me.whereareiam.dialectica.schema.Column;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
 import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
@@ -10,7 +10,7 @@ import java.util.UUID;
 import java.util.function.Function;
 
 /**
- * A typed column of an {@link EntityTable}: the schema {@link Column} together with the Java type
+ * A typed column of an {@link EntityTable}: the schema {@link ColumnDefinition} together with the Java type
  * of its values and the accessor that reads the value from an entity.
  * <p>
  * The Java type has to match the column type:
@@ -25,7 +25,7 @@ import java.util.function.Function;
  * </table>
  * <pre>{@code
  * static final EntityColumn<Account, UUID> UNIQUE_ID = EntityColumn.of(UUID.class,
- *         Column.builder("unique_id", ColumnType.uuid()).notNull().build(),
+ *         ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build(),
  *         Account::uniqueId);
  * }</pre>
  *
@@ -33,11 +33,11 @@ import java.util.function.Function;
  * @param <V> Java type of the column's values
  */
 public final class EntityColumn<T, V> {
-	private final @NotNull Column column;
+	private final @NotNull ColumnDefinition column;
 	private final @NotNull Class<V> type;
 	private final @NotNull Function<T, V> accessor;
 
-	private EntityColumn(@NotNull Class<V> type, @NotNull Column column, @NotNull Function<T, V> accessor) {
+	private EntityColumn(@NotNull Class<V> type, @NotNull ColumnDefinition column, @NotNull Function<T, V> accessor) {
 		this.type = type;
 		this.column = column;
 		this.accessor = accessor;
@@ -56,7 +56,7 @@ public final class EntityColumn<T, V> {
 	 */
 	public static <T, V> @NotNull EntityColumn<T, V> of(
 			@NotNull Class<V> type,
-			@NotNull Column column,
+			@NotNull ColumnDefinition column,
 			@NotNull Function<T, V> accessor
 	) {
 		Objects.requireNonNull(type, "type");
@@ -99,7 +99,7 @@ public final class EntityColumn<T, V> {
 	 *
 	 * @return the schema column
 	 */
-	public @NotNull Column column() {
+	public @NotNull ColumnDefinition column() {
 		return column;
 	}
 

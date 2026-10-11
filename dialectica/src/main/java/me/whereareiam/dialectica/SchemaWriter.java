@@ -3,10 +3,10 @@ package me.whereareiam.dialectica;
 import me.whereareiam.dialectica.common.schema.JdbcInspection;
 import me.whereareiam.dialectica.dialect.SchemaRenderer;
 import me.whereareiam.dialectica.exception.UnsupportedChangeException;
-import me.whereareiam.dialectica.schema.ForeignKey;
-import me.whereareiam.dialectica.schema.Index;
+import me.whereareiam.dialectica.schema.ForeignKeyDefinition;
+import me.whereareiam.dialectica.schema.IndexDefinition;
 import me.whereareiam.dialectica.schema.Schema;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import me.whereareiam.dialectica.schema.change.AddColumn;
 import me.whereareiam.dialectica.schema.change.CreateIndex;
 import me.whereareiam.dialectica.schema.change.CreateTable;
@@ -75,7 +75,7 @@ public final class SchemaWriter {
 	 * @throws IllegalArgumentException when tables of the schema reference each other in a cycle
 	 */
 	public void create(@NotNull Schema schema) throws SQLException {
-		for (Table table : order(Objects.requireNonNull(schema, "schema")))
+		for (TableDefinition table : order(Objects.requireNonNull(schema, "schema")))
 			apply(new CreateTable(table));
 	}
 
@@ -104,13 +104,13 @@ public final class SchemaWriter {
 	}
 
 	private void createTable(CreateTable change) throws SQLException {
-		Table table = change.getTable();
+		TableDefinition table = change.getTable();
 		if (!inspection.tableExists(table.getName())) {
 			execute(renderer.render(change));
 			return;
 		}
 
-		for (Index index : table.getIndexes())
+		for (IndexDefinition index : table.getIndexes())
 			applyOne(new CreateIndex(table.getName(), index));
 	}
 
@@ -140,14 +140,14 @@ public final class SchemaWriter {
 		}
 	}
 
-	private static List<Table> order(Schema schema) {
-		Map<String, Table> pending = new LinkedHashMap<>();
-		for (Table table : schema.getTables())
+	private static List<TableDefinition> order(Schema schema) {
+		Map<String, TableDefinition> pending = new LinkedHashMap<>();
+		for (TableDefinition table : schema.getTables())
 			pending.put(table.getName(), table);
 
-		List<Table> ordered = new ArrayList<>();
+		List<TableDefinition> ordered = new ArrayList<>();
 		while (!pending.isEmpty()) {
-			Table next = pending.values().stream()
+			TableDefinition next = pending.values().stream()
 					.filter(table -> !referencesPending(table, pending))
 					.findFirst()
 					.orElseThrow(() -> new IllegalArgumentException("Tables " + pending.keySet() + " reference each other in a cycle"));
@@ -159,8 +159,8 @@ public final class SchemaWriter {
 		return ordered;
 	}
 
-	private static boolean referencesPending(Table table, Map<String, Table> pending) {
-		for (ForeignKey foreignKey : table.getForeignKeys()) {
+	private static boolean referencesPending(TableDefinition table, Map<String, TableDefinition> pending) {
+		for (ForeignKeyDefinition foreignKey : table.getForeignKeys()) {
 			String referenced = foreignKey.getReferencedTable();
 			if (!referenced.equals(table.getName()) && pending.containsKey(referenced)) return true;
 		}

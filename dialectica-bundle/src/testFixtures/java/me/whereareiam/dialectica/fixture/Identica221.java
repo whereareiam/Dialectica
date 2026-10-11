@@ -3,8 +3,8 @@ package me.whereareiam.dialectica.fixture;
 import java.util.List;
 
 /**
- * The DDL Identica 2.2.1 wrote by hand for the tables of {@link Account}, {@link ProviderLink} and
- * {@link AccountReservation}, copied from its entities.
+ * The DDL Identica 2.2.1 wrote by hand for the tables of {@link Account}, {@link ProviderLink},
+ * {@link ProviderProfile} and {@link AccountReservation}, copied from its entities.
  */
 public final class Identica221 {
 	private Identica221() {
@@ -47,6 +47,15 @@ public final class Identica221 {
 							FOREIGN KEY (unique_id) REFERENCES identica_accounts(unique_id) ON DELETE CASCADE
 						)
 						""".formatted(uuidType, booleanType, timeType, timeType),
+				"""
+						CREATE TABLE IF NOT EXISTS identica_provider_profiles (
+							provider_id VARCHAR(64) NOT NULL,
+							provider_subject VARCHAR(128) NOT NULL,
+							provider_username VARCHAR(64) NOT NULL,
+							PRIMARY KEY (provider_id, provider_subject),
+							FOREIGN KEY (provider_id, provider_subject) REFERENCES identica_provider_links(provider_id, provider_subject) ON DELETE CASCADE
+						)
+						""",
 				"""
 						CREATE TABLE IF NOT EXISTS identica_account_reservations (
 							reservation_key VARCHAR(192) PRIMARY KEY,
