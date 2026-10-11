@@ -2,13 +2,17 @@ package me.whereareiam.dialectica.common.entity;
 
 import me.whereareiam.dialectica.entity.EntityColumn;
 import me.whereareiam.dialectica.entity.EntityTable;
+import me.whereareiam.dialectica.entity.annotation.Column;
+import me.whereareiam.dialectica.entity.annotation.ForeignKey;
 import me.whereareiam.dialectica.entity.annotation.Id;
 import me.whereareiam.dialectica.entity.annotation.Index;
 import me.whereareiam.dialectica.entity.annotation.Length;
 import me.whereareiam.dialectica.entity.annotation.References;
 import me.whereareiam.dialectica.entity.annotation.Table;
 import me.whereareiam.dialectica.entity.annotation.Unique;
-import me.whereareiam.dialectica.schema.ForeignKey;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
+import me.whereareiam.dialectica.schema.ForeignKeyDefinition;
+import me.whereareiam.dialectica.schema.IndexDefinition;
 import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.jetbrains.annotations.NotNull;
 
@@ -63,7 +67,7 @@ public final class EntityReader {
 		Map<String, Field> byName = new LinkedHashMap<>();
 		List<EntityColumn<T, ?>> columns = new ArrayList<>();
 		List<String> primaryKey = new ArrayList<>();
-		List<ForeignKey> foreignKeys = new ArrayList<>();
+		List<ForeignKeyDefinition> foreignKeys = new ArrayList<>();
 		for (Field field : fields) {
 			EntityColumn<T, ?> column = column(type, field);
 			byName.put(field.getName(), field);
@@ -75,22 +79,25 @@ public final class EntityReader {
 
 			References references = field.getAnnotation(References.class);
 			if (references != null)
-				foreignKeys.add(ForeignKey.builder(column.name())
+				foreignKeys.add(ForeignKeyDefinition.builder(column.name())
 						.references(tableName(references.entity()), keyColumn(references.entity()))
 						.onDelete(references.onDelete())
 						.build());
 		}
 
+		for (ForeignKey foreignKey : type.getAnnotationsByType(ForeignKey.class))
+			foreignKeys.add(foreignKey(type, byName, foreignKey));
+
 		List<List<String>> uniqueKeys = new ArrayList<>();
 		for (Unique unique : type.getAnnotationsByType(Unique.class))
 			uniqueKeys.add(columnNames(type, byName, unique.value()));
 
-		List<me.whereareiam.dialectica.schema.Index> indexes = new ArrayList<>();
+		List<IndexDefinition> indexes = new ArrayList<>();
 		for (Index index : type.getAnnotationsByType(Index.class)) {
 			String[] columnNames = columnNames(type, byName, index.columns()).toArray(String[]::new);
 			indexes.add(index.unique()
-					? me.whereareiam.dialectica.schema.Index.unique(index.name(), columnNames)
-					: me.whereareiam.dialectica.schema.Index.plain(index.name(), columnNames));
+					? IndexDefinition.unique(index.name(), columnNames)
+					: IndexDefinition.plain(index.name(), columnNames));
 		}
 
 		Function<Object[], T> instantiation = ReflectedEntityTable.instantiation(type, fields);
@@ -116,11 +123,45 @@ public final class EntityReader {
 	}
 
 	private static String keyColumn(Class<?> type) {
-		List<Field> keys = fields(type).stream().filter(field -> field.isAnnotationPresent(Id.class)).toList();
+		List<Field> keys = keyFields(type);
 		if (keys.size() != 1)
 			throw new IllegalArgumentException(type.getName() + " is referenced, so it needs exactly one @Id field, not " + keys.size());
 
 		return columnName(keys.get(0));
+	}
+
+	/**
+	 * Reads a foreign key over several fields, which reference the referenced entity's key fields
+	 * one by one, in their declaration order.
+	 */
+	private static ForeignKeyDefinition foreignKey(Class<?> type, Map<String, Field> fields, ForeignKey foreignKey) {
+		Class<?> referenced = foreignKey.entity();
+		String referencedTable = tableName(referenced);
+		List<Field> keys = keyFields(referenced);
+		String[] fieldNames = foreignKey.fields();
+		if (keys.isEmpty())
+			throw new IllegalArgumentException(referenced.getName() + " is referenced by " + type.getName() + ", so it needs an @Id field");
+		if (fieldNames.length != keys.size())
+			throw new IllegalArgumentException(type.getName() + ": the foreign key on " + List.of(fieldNames) + " must name "
+					+ keys.size() + " fields, one for each @Id field of " + referenced.getName());
+
+		List<String> columns = columnNames(type, fields, fieldNames);
+		for (int index = 0; index < keys.size(); index++) {
+			Field field = fields.get(fieldNames[index]);
+			Field key = keys.get(index);
+			if (WRAPPERS.getOrDefault(field.getType(), field.getType()) != WRAPPERS.getOrDefault(key.getType(), key.getType()))
+				throw invalid(type, field, "references " + referenced.getName() + "." + key.getName() + " of type "
+						+ key.getType().getName() + ", not " + field.getType().getName());
+		}
+
+		return ForeignKeyDefinition.builder(columns.toArray(String[]::new))
+				.references(referencedTable, keys.stream().map(EntityReader::columnName).toArray(String[]::new))
+				.onDelete(foreignKey.onDelete())
+				.build();
+	}
+
+	private static List<Field> keyFields(Class<?> type) {
+		return fields(type).stream().filter(field -> field.isAnnotationPresent(Id.class)).toList();
 	}
 
 	static List<Field> fields(Class<?> type) {
@@ -157,7 +198,7 @@ public final class EntityReader {
 		if (nullable && field.getType().isPrimitive()) throw invalid(type, field, "a primitive field cannot be nullable");
 
 		ColumnType columnType = columnType(type, field, javaType);
-		me.whereareiam.dialectica.schema.Column.Builder schemaColumn = me.whereareiam.dialectica.schema.Column.builder(columnName(field), columnType);
+		ColumnDefinition.Builder schemaColumn = ColumnDefinition.builder(columnName(field), columnType);
 		if (!nullable) schemaColumn.notNull();
 
 		return EntityColumn.of((Class) javaType, schemaColumn.build(), accessor(type, field));
@@ -197,7 +238,7 @@ public final class EntityReader {
 	}
 
 	static String columnName(Field field) {
-		me.whereareiam.dialectica.entity.annotation.Column column = field.getAnnotation(me.whereareiam.dialectica.entity.annotation.Column.class);
+		Column column = field.getAnnotation(Column.class);
 		if (column != null) return column.value();
 
 		return field.getName()

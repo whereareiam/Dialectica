@@ -4,11 +4,12 @@ import me.whereareiam.dialectica.fixture.Account;
 import me.whereareiam.dialectica.fixture.AccountReservation;
 import me.whereareiam.dialectica.fixture.Identica221;
 import me.whereareiam.dialectica.fixture.ProviderLink;
-import me.whereareiam.dialectica.schema.Column;
-import me.whereareiam.dialectica.schema.ForeignKey;
-import me.whereareiam.dialectica.schema.Index;
+import me.whereareiam.dialectica.fixture.ProviderProfile;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
+import me.whereareiam.dialectica.schema.ForeignKeyDefinition;
+import me.whereareiam.dialectica.schema.IndexDefinition;
 import me.whereareiam.dialectica.schema.Schema;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import me.whereareiam.dialectica.schema.change.AddColumn;
 import me.whereareiam.dialectica.schema.change.CreateIndex;
 import me.whereareiam.dialectica.schema.change.DropColumn;
@@ -50,41 +51,41 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 abstract class SchemaWriterContract {
 	static final String ACCOUNT = "00000000-0000-0000-0000-000000000001";
 
-	static final Table ACCOUNTS = Table.builder("dialectica_accounts")
-			.column(Column.builder("unique_id", ColumnType.uuid()).notNull().build())
-			.column(Column.builder("username", ColumnType.varchar(64)).notNull().build())
-			.column(Column.builder("created_at", ColumnType.bigint()).build())
+	static final TableDefinition ACCOUNTS = TableDefinition.builder("dialectica_accounts")
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+			.column(ColumnDefinition.builder("username", ColumnType.varchar(64)).notNull().build())
+			.column(ColumnDefinition.builder("created_at", ColumnType.bigint()).build())
 			.primaryKey("unique_id")
-			.index(Index.plain("dialectica_accounts_username", "username"))
+			.index(IndexDefinition.plain("dialectica_accounts_username", "username"))
 			.build();
 
-	static final Table LINKS = Table.builder("dialectica_links")
-			.column(Column.builder("provider_id", ColumnType.varchar(64)).notNull().build())
-			.column(Column.builder("provider_subject", ColumnType.varchar(128)).notNull().build())
-			.column(Column.builder("unique_id", ColumnType.uuid()).notNull().build())
-			.column(Column.builder("is_primary", ColumnType.bool()).notNull().defaultValue(false).build())
-			.column(Column.builder("attempts", ColumnType.integer()).notNull().defaultValue(3).build())
-			.column(Column.builder("note", ColumnType.text()).defaultValue("it's a\\b").build())
-			.column(Column.builder("external_id", ColumnType.varchar(64)).build())
+	static final TableDefinition LINKS = TableDefinition.builder("dialectica_links")
+			.column(ColumnDefinition.builder("provider_id", ColumnType.varchar(64)).notNull().build())
+			.column(ColumnDefinition.builder("provider_subject", ColumnType.varchar(128)).notNull().build())
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+			.column(ColumnDefinition.builder("is_primary", ColumnType.bool()).notNull().defaultValue(false).build())
+			.column(ColumnDefinition.builder("attempts", ColumnType.integer()).notNull().defaultValue(3).build())
+			.column(ColumnDefinition.builder("note", ColumnType.text()).defaultValue("it's a\\b").build())
+			.column(ColumnDefinition.builder("external_id", ColumnType.varchar(64)).build())
 			.primaryKey("provider_id", "provider_subject")
 			.unique("unique_id", "provider_id")
-			.foreignKey(ForeignKey.builder("unique_id")
+			.foreignKey(ForeignKeyDefinition.builder("unique_id")
 					.references("dialectica_accounts", "unique_id")
 					.onDelete(ReferentialAction.CASCADE)
 					.build())
-			.index(Index.unique("dialectica_links_external_id", "external_id"))
+			.index(IndexDefinition.unique("dialectica_links_external_id", "external_id"))
 			.build();
 
-	static final Table SESSIONS = Table.builder("dialectica_sessions")
-			.column(Column.builder("id", ColumnType.bigint()).notNull().build())
-			.column(Column.builder("unique_id", ColumnType.uuid()).build())
-			.column(Column.builder("parent_id", ColumnType.bigint()).build())
+	static final TableDefinition SESSIONS = TableDefinition.builder("dialectica_sessions")
+			.column(ColumnDefinition.builder("id", ColumnType.bigint()).notNull().build())
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).build())
+			.column(ColumnDefinition.builder("parent_id", ColumnType.bigint()).build())
 			.primaryKey("id")
-			.foreignKey(ForeignKey.builder("unique_id")
+			.foreignKey(ForeignKeyDefinition.builder("unique_id")
 					.references("dialectica_accounts", "unique_id")
 					.onDelete(ReferentialAction.SET_NULL)
 					.build())
-			.foreignKey(ForeignKey.builder("parent_id")
+			.foreignKey(ForeignKeyDefinition.builder("parent_id")
 					.references("dialectica_sessions", "id")
 					.onDelete(ReferentialAction.RESTRICT)
 					.build())
@@ -92,11 +93,11 @@ abstract class SchemaWriterContract {
 
 	private static final List<String> TABLES = List.of(
 			"dialectica_sessions", "dialectica_renamed_links", "dialectica_links", "dialectica_accounts",
-			"identica_provider_links", "identica_account_reservations", "identica_accounts"
+			"identica_provider_profiles", "identica_provider_links", "identica_account_reservations", "identica_accounts"
 	);
 
 	private static final List<String> IDENTICA_TABLES = List.of(
-			"identica_accounts", "identica_provider_links", "identica_account_reservations"
+			"identica_accounts", "identica_provider_links", "identica_provider_profiles", "identica_account_reservations"
 	);
 
 	protected Connection connection;
@@ -133,7 +134,7 @@ abstract class SchemaWriterContract {
 	void createsWhatTheModelDeclares() throws SQLException {
 		Dialectica.on(connection).create(Schema.of(SESSIONS, LINKS, ACCOUNTS));
 
-		for (Table table : List.of(ACCOUNTS, LINKS, SESSIONS))
+		for (TableDefinition table : List.of(ACCOUNTS, LINKS, SESSIONS))
 			assertMatches(table);
 	}
 
@@ -164,9 +165,9 @@ abstract class SchemaWriterContract {
 		SchemaWriter writer = Dialectica.on(connection);
 		writer.create(Schema.of(ACCOUNTS, LINKS));
 		SchemaChange[] changes = {
-				new AddColumn("dialectica_accounts", Column.builder("last_seen_at", ColumnType.bigint()).build()),
-				new AddColumn("dialectica_accounts", Column.builder("is_locked", ColumnType.bool()).notNull().defaultValue(true).build()),
-				new CreateIndex("dialectica_accounts", Index.unique("dialectica_accounts_last_seen_at", "last_seen_at")),
+				new AddColumn("dialectica_accounts", ColumnDefinition.builder("last_seen_at", ColumnType.bigint()).build()),
+				new AddColumn("dialectica_accounts", ColumnDefinition.builder("is_locked", ColumnType.bool()).notNull().defaultValue(true).build()),
+				new CreateIndex("dialectica_accounts", IndexDefinition.unique("dialectica_accounts_last_seen_at", "last_seen_at")),
 				new DropIndex("dialectica_accounts", "dialectica_accounts_username"),
 				new DropColumn("dialectica_accounts", "created_at"),
 				new RenameTable("dialectica_links", "dialectica_renamed_links"),
@@ -224,9 +225,11 @@ abstract class SchemaWriterContract {
 		Map<String, String> legacy = snapshot(IDENTICA_TABLES);
 		assertTrue(legacy.get("identica_provider_links").contains("provider_subject"), legacy.toString());
 		assertTrue(legacy.get("identica_provider_links").contains("->identica_accounts.unique_id:cascade"), legacy.toString());
+		assertTrue(legacy.get("identica_provider_profiles").contains("provider_subject->identica_provider_links.provider_subject:cascade"), legacy.toString());
 		dropTables();
 
 		Dialectica.on(connection).create(Schema.of(
+				Dialectica.entity(ProviderProfile.class).table(),
 				Dialectica.entity(ProviderLink.class).table(),
 				Dialectica.entity(AccountReservation.class).table(),
 				Dialectica.entity(Account.class).table()
@@ -237,15 +240,15 @@ abstract class SchemaWriterContract {
 
 	@Test
 	void refusesTablesThatReferenceEachOtherInACycle() {
-		Table first = Table.builder("dialectica_first")
-				.column(Column.builder("id", ColumnType.bigint()).notNull().build())
+		TableDefinition first = TableDefinition.builder("dialectica_first")
+				.column(ColumnDefinition.builder("id", ColumnType.bigint()).notNull().build())
 				.primaryKey("id")
-				.foreignKey(ForeignKey.builder("id").references("dialectica_second", "id").build())
+				.foreignKey(ForeignKeyDefinition.builder("id").references("dialectica_second", "id").build())
 				.build();
-		Table second = Table.builder("dialectica_second")
-				.column(Column.builder("id", ColumnType.bigint()).notNull().build())
+		TableDefinition second = TableDefinition.builder("dialectica_second")
+				.column(ColumnDefinition.builder("id", ColumnType.bigint()).notNull().build())
 				.primaryKey("id")
-				.foreignKey(ForeignKey.builder("id").references("dialectica_first", "id").build())
+				.foreignKey(ForeignKeyDefinition.builder("id").references("dialectica_first", "id").build())
 				.build();
 
 		assertThrows(IllegalArgumentException.class, () -> Dialectica.on(connection).create(Schema.of(first, second)));
@@ -272,7 +275,7 @@ abstract class SchemaWriterContract {
 			if (exists(table)) execute("DROP TABLE " + table);
 	}
 
-	private void assertMatches(Table table) throws SQLException {
+	private void assertMatches(TableDefinition table) throws SQLException {
 		String name = table.getName();
 		DatabaseMetaData metaData = connection.getMetaData();
 		String stored = stored(name);
@@ -281,7 +284,7 @@ abstract class SchemaWriterContract {
 		try (ResultSet columns = metaData.getColumns(connection.getCatalog(), connection.getSchema(), stored, "%")) {
 			while (columns.next()) {
 				String column = lower(columns.getString("COLUMN_NAME"));
-				Column declared = table.column(column);
+				ColumnDefinition declared = table.column(column);
 				columnNames.add(column);
 				if (declared == null) continue;
 
@@ -291,7 +294,7 @@ abstract class SchemaWriterContract {
 					assertEquals(varchar.length(), columns.getInt("COLUMN_SIZE"), name + "." + column + " length");
 			}
 		}
-		assertEquals(table.getColumns().stream().map(Column::getName).toList(), columnNames, name + " columns");
+		assertEquals(table.getColumns().stream().map(ColumnDefinition::getName).toList(), columnNames, name + " columns");
 
 		Map<Integer, String> primaryKey = new TreeMap<>();
 		try (ResultSet keys = metaData.getPrimaryKeys(connection.getCatalog(), connection.getSchema(), stored)) {
@@ -302,7 +305,7 @@ abstract class SchemaWriterContract {
 
 		Map<String, List<String>> indexColumns = indexColumns(stored);
 		Map<String, Boolean> indexes = indexes(name);
-		for (Index index : table.getIndexes()) {
+		for (IndexDefinition index : table.getIndexes()) {
 			assertEquals(index.isUnique(), indexes.get(index.getName()), name + " index " + index.getName());
 			assertEquals(index.getColumns(), indexColumns.get(index.getName()), name + " index " + index.getName() + " columns");
 		}
@@ -319,7 +322,7 @@ abstract class SchemaWriterContract {
 						+ "." + lower(imported.getString("PKCOLUMN_NAME")) + ":" + deleteRule(imported.getShort("DELETE_RULE")));
 		}
 		Set<String> expected = new HashSet<>();
-		for (ForeignKey foreignKey : table.getForeignKeys())
+		for (ForeignKeyDefinition foreignKey : table.getForeignKeys())
 			for (int index = 0; index < foreignKey.getColumns().size(); index++)
 				expected.add(foreignKey.getColumns().get(index) + "->" + foreignKey.getReferencedTable() + "."
 						+ foreignKey.getReferencedColumns().get(index) + ":" + deleteRule(foreignKey.getOnDelete()));

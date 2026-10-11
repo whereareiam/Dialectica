@@ -2,8 +2,8 @@ package me.whereareiam.dialectica.common.dialect;
 
 import me.whereareiam.dialectica.dialect.SqlStatement;
 import me.whereareiam.dialectica.dialect.StatementRenderer;
-import me.whereareiam.dialectica.schema.Column;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.junit.jupiter.params.provider.Arguments;
 
@@ -17,30 +17,30 @@ import java.util.stream.Stream;
  * the statement the dialect expects.
  */
 public final class StatementCases {
-	public static final Table RESERVATIONS = Table.builder("identica_account_reservations")
-			.column(Column.builder("reservation_key", ColumnType.varchar(192)).notNull().build())
-			.column(Column.builder("unique_id", ColumnType.uuid()).notNull().build())
-			.column(Column.builder("created_at", ColumnType.bigint()).notNull().build())
-			.column(Column.builder("expires_at", ColumnType.bigint()).notNull().build())
+	public static final TableDefinition RESERVATIONS = TableDefinition.builder("identica_account_reservations")
+			.column(ColumnDefinition.builder("reservation_key", ColumnType.varchar(192)).notNull().build())
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+			.column(ColumnDefinition.builder("created_at", ColumnType.bigint()).notNull().build())
+			.column(ColumnDefinition.builder("expires_at", ColumnType.bigint()).notNull().build())
 			.primaryKey("reservation_key")
 			.build();
 
-	public static final Table LINKS = Table.builder("identica_provider_links")
-			.column(Column.builder("provider_id", ColumnType.varchar(64)).notNull().build())
-			.column(Column.builder("provider_subject", ColumnType.varchar(128)).notNull().build())
-			.column(Column.builder("unique_id", ColumnType.uuid()).notNull().build())
-			.column(Column.builder("is_primary", ColumnType.bool()).notNull().build())
+	public static final TableDefinition LINKS = TableDefinition.builder("identica_provider_links")
+			.column(ColumnDefinition.builder("provider_id", ColumnType.varchar(64)).notNull().build())
+			.column(ColumnDefinition.builder("provider_subject", ColumnType.varchar(128)).notNull().build())
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+			.column(ColumnDefinition.builder("is_primary", ColumnType.bool()).notNull().build())
 			.primaryKey("provider_id", "provider_subject")
 			.build();
 
-	public static final Table FLAGS = Table.builder("identica_flags")
-			.column(Column.builder("unique_id", ColumnType.uuid()).notNull().build())
-			.column(Column.builder("order", ColumnType.varchar(16)).notNull().build())
+	public static final TableDefinition FLAGS = TableDefinition.builder("identica_flags")
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+			.column(ColumnDefinition.builder("order", ColumnType.varchar(16)).notNull().build())
 			.primaryKey("unique_id", "order")
 			.build();
 
-	public static final Table UNKEYED = Table.builder("identica_events")
-			.column(Column.builder("unique_id", ColumnType.uuid()).build())
+	public static final TableDefinition UNKEYED = TableDefinition.builder("identica_events")
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).build())
 			.build();
 
 	private StatementCases() {

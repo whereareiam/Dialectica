@@ -16,25 +16,25 @@ import java.util.Set;
 /**
  * A table: its columns, its keys and its indexes.
  * <pre>{@code
- * Table links = Table.builder("identica_provider_links")
- *         .column(Column.builder("provider_id", ColumnType.varchar(64)).notNull().build())
- *         .column(Column.builder("provider_subject", ColumnType.varchar(128)).notNull().build())
- *         .column(Column.builder("unique_id", ColumnType.uuid()).notNull().build())
- *         .column(Column.builder("linked_at", ColumnType.bigint()).build())
+ * TableDefinition links = TableDefinition.builder("identica_provider_links")
+ *         .column(ColumnDefinition.builder("provider_id", ColumnType.varchar(64)).notNull().build())
+ *         .column(ColumnDefinition.builder("provider_subject", ColumnType.varchar(128)).notNull().build())
+ *         .column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+ *         .column(ColumnDefinition.builder("linked_at", ColumnType.bigint()).build())
  *         .primaryKey("provider_id", "provider_subject")
  *         .unique("unique_id", "provider_id")
- *         .foreignKey(ForeignKey.builder("unique_id")
+ *         .foreignKey(ForeignKeyDefinition.builder("unique_id")
  *                 .references("identica_accounts", "unique_id")
  *                 .onDelete(ReferentialAction.CASCADE)
  *                 .build())
- *         .index(Index.plain("identica_provider_links_linked_at", "linked_at"))
+ *         .index(IndexDefinition.plain("identica_provider_links_linked_at", "linked_at"))
  *         .build();
  * }</pre>
  */
 @Getter
 @ToString
 @EqualsAndHashCode
-public final class Table {
+public final class TableDefinition {
 	/**
 	 * Name of the table, written as given. A name that is a lowercase snake_case word and not
 	 * reserved by a dialect is rendered without quotes.
@@ -44,7 +44,7 @@ public final class Table {
 	/**
 	 * Columns, in the order they are created.
 	 */
-	private final @NotNull List<Column> columns;
+	private final @NotNull List<ColumnDefinition> columns;
 
 	/**
 	 * Columns of the primary key, in order; empty for a table without one.
@@ -53,21 +53,21 @@ public final class Table {
 
 	/**
 	 * Unique constraints, each the columns whose combined values no two rows may share. Like a
-	 * unique {@link Index}, they accept any number of rows with a {@code NULL} among the columns.
+	 * unique {@link IndexDefinition}, they accept any number of rows with a {@code NULL} among the columns.
 	 */
 	private final @NotNull List<List<String>> uniqueKeys;
 
 	/**
 	 * Foreign keys of the table.
 	 */
-	private final @NotNull List<ForeignKey> foreignKeys;
+	private final @NotNull List<ForeignKeyDefinition> foreignKeys;
 
 	/**
 	 * Indexes, created right after the table.
 	 */
-	private final @NotNull List<Index> indexes;
+	private final @NotNull List<IndexDefinition> indexes;
 
-	private Table(@NotNull Builder builder) {
+	private TableDefinition(@NotNull Builder builder) {
 		this.name = builder.name;
 		this.columns = List.copyOf(builder.columns);
 		this.primaryKey = builder.primaryKey;
@@ -95,8 +95,8 @@ public final class Table {
 	 * @param name name of the column
 	 * @return the column, or {@code null} when the table has none of that name
 	 */
-	public @Nullable Column column(@NotNull String name) {
-		for (Column column : columns)
+	public @Nullable ColumnDefinition column(@NotNull String name) {
+		for (ColumnDefinition column : columns)
 			if (column.getName().equals(name)) return column;
 
 		return null;
@@ -106,23 +106,23 @@ public final class Table {
 		if (columns.isEmpty()) throw new IllegalArgumentException("Table " + name + " needs at least one column");
 
 		Set<String> names = new HashSet<>();
-		for (Column column : columns)
+		for (ColumnDefinition column : columns)
 			if (!names.add(column.getName()))
 				throw new IllegalArgumentException("Table " + name + " declares column " + column.getName() + " twice");
 
 		for (String key : primaryKey) {
-			Column column = requireColumn(key, "primary key");
+			ColumnDefinition column = requireColumn(key, "primary key");
 			if (column.isNullable())
 				throw new IllegalArgumentException("Primary key column " + name + "." + key + " must be declared not null");
 		}
 
 		for (List<String> uniqueKey : uniqueKeys)
 			uniqueKey.forEach(column -> requireColumn(column, "unique key"));
-		for (ForeignKey foreignKey : foreignKeys)
+		for (ForeignKeyDefinition foreignKey : foreignKeys)
 			foreignKey.getColumns().forEach(column -> requireColumn(column, "foreign key"));
 
 		Set<String> indexNames = new HashSet<>();
-		for (Index index : indexes) {
+		for (IndexDefinition index : indexes) {
 			if (!indexNames.add(index.getName()))
 				throw new IllegalArgumentException("Table " + name + " declares index " + index.getName() + " twice");
 
@@ -130,8 +130,8 @@ public final class Table {
 		}
 	}
 
-	private Column requireColumn(String columnName, String use) {
-		Column column = column(columnName);
+	private ColumnDefinition requireColumn(String columnName, String use) {
+		ColumnDefinition column = column(columnName);
 		if (column == null)
 			throw new IllegalArgumentException("The " + use + " of table " + name + " names the unknown column " + columnName);
 
@@ -154,15 +154,15 @@ public final class Table {
 	}
 
 	/**
-	 * Builds a {@link Table}.
+	 * Builds a {@link TableDefinition}.
 	 */
 	public static final class Builder {
 		private final String name;
-		private final List<Column> columns = new ArrayList<>();
+		private final List<ColumnDefinition> columns = new ArrayList<>();
 		private List<String> primaryKey = List.of();
 		private final List<List<String>> uniqueKeys = new ArrayList<>();
-		private final List<ForeignKey> foreignKeys = new ArrayList<>();
-		private final List<Index> indexes = new ArrayList<>();
+		private final List<ForeignKeyDefinition> foreignKeys = new ArrayList<>();
+		private final List<IndexDefinition> indexes = new ArrayList<>();
 
 		private Builder(String name) {
 			this.name = name;
@@ -174,7 +174,7 @@ public final class Table {
 		 * @param column column to add
 		 * @return this builder
 		 */
-		public @NotNull Builder column(@NotNull Column column) {
+		public @NotNull Builder column(@NotNull ColumnDefinition column) {
 			columns.add(Objects.requireNonNull(column, "column"));
 			return this;
 		}
@@ -209,7 +209,7 @@ public final class Table {
 		 * @param foreignKey foreign key to add
 		 * @return this builder
 		 */
-		public @NotNull Builder foreignKey(@NotNull ForeignKey foreignKey) {
+		public @NotNull Builder foreignKey(@NotNull ForeignKeyDefinition foreignKey) {
 			foreignKeys.add(Objects.requireNonNull(foreignKey, "foreign key"));
 			return this;
 		}
@@ -220,7 +220,7 @@ public final class Table {
 		 * @param index index to add
 		 * @return this builder
 		 */
-		public @NotNull Builder index(@NotNull Index index) {
+		public @NotNull Builder index(@NotNull IndexDefinition index) {
 			indexes.add(Objects.requireNonNull(index, "index"));
 			return this;
 		}
@@ -233,8 +233,8 @@ public final class Table {
 		 *                                  index twice, names an unknown column in a key or an
 		 *                                  index, or has a nullable primary key column
 		 */
-		public @NotNull Table build() {
-			return new Table(this);
+		public @NotNull TableDefinition build() {
+			return new TableDefinition(this);
 		}
 	}
 }

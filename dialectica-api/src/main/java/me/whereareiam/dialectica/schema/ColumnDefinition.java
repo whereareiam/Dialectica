@@ -10,12 +10,12 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 
 /**
- * A column of a {@link Table}.
+ * A column of a {@link TableDefinition}.
  * <pre>{@code
- * Column username = Column.builder("username", ColumnType.varchar(64))
+ * ColumnDefinition username = ColumnDefinition.builder("username", ColumnType.varchar(64))
  *         .notNull()
  *         .build();
- * Column primary = Column.builder("is_primary", ColumnType.bool())
+ * ColumnDefinition primary = ColumnDefinition.builder("is_primary", ColumnType.bool())
  *         .notNull()
  *         .defaultValue(false)
  *         .build();
@@ -24,7 +24,7 @@ import java.util.Objects;
 @Getter
 @ToString
 @EqualsAndHashCode
-public final class Column {
+public final class ColumnDefinition {
 	/**
 	 * Name of the column, written as given. A name that is a lowercase snake_case word and not
 	 * reserved by a dialect is rendered without quotes.
@@ -48,7 +48,7 @@ public final class Column {
 	 */
 	private final @Nullable Object defaultValue;
 
-	private Column(@NotNull Builder builder) {
+	private ColumnDefinition(@NotNull Builder builder) {
 		this.name = requireName(builder.name, "column");
 		this.type = Objects.requireNonNull(builder.type, "type");
 		this.nullable = builder.nullable;
@@ -74,7 +74,7 @@ public final class Column {
 	}
 
 	/**
-	 * Builds a {@link Column}.
+	 * Builds a {@link ColumnDefinition}.
 	 */
 	public static final class Builder {
 		private final String name;
@@ -137,8 +137,8 @@ public final class Column {
 		 * @return the column
 		 * @throws IllegalArgumentException when the name is blank
 		 */
-		public @NotNull Column build() {
-			return new Column(this);
+		public @NotNull ColumnDefinition build() {
+			return new ColumnDefinition(this);
 		}
 	}
 }

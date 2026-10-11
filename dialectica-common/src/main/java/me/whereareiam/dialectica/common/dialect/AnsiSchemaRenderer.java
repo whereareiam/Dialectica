@@ -2,10 +2,10 @@ package me.whereareiam.dialectica.common.dialect;
 
 import me.whereareiam.dialectica.Dialect;
 import me.whereareiam.dialectica.dialect.SchemaRenderer;
-import me.whereareiam.dialectica.schema.Column;
-import me.whereareiam.dialectica.schema.ForeignKey;
-import me.whereareiam.dialectica.schema.Index;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
+import me.whereareiam.dialectica.schema.ForeignKeyDefinition;
+import me.whereareiam.dialectica.schema.IndexDefinition;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import me.whereareiam.dialectica.schema.change.AddColumn;
 import me.whereareiam.dialectica.schema.change.CreateIndex;
 import me.whereareiam.dialectica.schema.change.CreateTable;
@@ -63,21 +63,21 @@ public abstract class AnsiSchemaRenderer implements SchemaRenderer {
 	 * @return the table's statement, then one statement per index
 	 */
 	protected @NotNull List<String> createTable(@NotNull CreateTable change) {
-		Table table = change.getTable();
+		TableDefinition table = change.getTable();
 		StringJoiner definitions = new StringJoiner(", ", "CREATE TABLE " + identifier(table.getName()) + " (", ")");
-		for (Column column : table.getColumns())
+		for (ColumnDefinition column : table.getColumns())
 			definitions.add(column(column));
 
 		if (!table.getPrimaryKey().isEmpty())
 			definitions.add("PRIMARY KEY " + identifiers(table.getPrimaryKey()));
 		for (List<String> uniqueKey : table.getUniqueKeys())
 			definitions.add("UNIQUE " + identifiers(uniqueKey));
-		for (ForeignKey foreignKey : table.getForeignKeys())
+		for (ForeignKeyDefinition foreignKey : table.getForeignKeys())
 			definitions.add(foreignKey(foreignKey));
 
 		List<String> statements = new ArrayList<>();
 		statements.add(definitions.toString());
-		for (Index index : table.getIndexes())
+		for (IndexDefinition index : table.getIndexes())
 			statements.add(createIndex(table.getName(), index));
 
 		return statements;
@@ -130,7 +130,7 @@ public abstract class AnsiSchemaRenderer implements SchemaRenderer {
 	 * @param index index to create
 	 * @return the statement
 	 */
-	protected @NotNull String createIndex(@NotNull String table, @NotNull Index index) {
+	protected @NotNull String createIndex(@NotNull String table, @NotNull IndexDefinition index) {
 		return "CREATE " + (index.isUnique() ? "UNIQUE " : "") + "INDEX " + identifier(index.getName())
 				+ " ON " + identifier(table) + " " + identifiers(index.getColumns());
 	}
@@ -151,7 +151,7 @@ public abstract class AnsiSchemaRenderer implements SchemaRenderer {
 	 * @param column column to render
 	 * @return the definition
 	 */
-	protected @NotNull String column(@NotNull Column column) {
+	protected @NotNull String column(@NotNull ColumnDefinition column) {
 		StringBuilder definition = new StringBuilder(identifier(column.getName())).append(' ').append(type(column.getType()));
 		if (column.getDefaultValue() != null)
 			definition.append(" DEFAULT ").append(defaultValue(column.getType(), column.getDefaultValue()));
@@ -231,7 +231,7 @@ public abstract class AnsiSchemaRenderer implements SchemaRenderer {
 		return joiner.toString();
 	}
 
-	private String foreignKey(ForeignKey foreignKey) {
+	private String foreignKey(ForeignKeyDefinition foreignKey) {
 		return "FOREIGN KEY " + identifiers(foreignKey.getColumns())
 				+ " REFERENCES " + identifier(foreignKey.getReferencedTable()) + " " + identifiers(foreignKey.getReferencedColumns())
 				+ " ON DELETE " + referentialAction(foreignKey.getOnDelete());

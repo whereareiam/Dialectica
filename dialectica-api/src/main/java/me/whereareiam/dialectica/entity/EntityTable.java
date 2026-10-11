@@ -1,6 +1,6 @@
 package me.whereareiam.dialectica.entity;
 
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
@@ -10,7 +10,7 @@ import java.util.Objects;
 import java.util.function.UnaryOperator;
 
 /**
- * The table an entity type is stored in: the schema {@link Table}, the typed
+ * The table an entity type is stored in: the schema {@link TableDefinition}, the typed
  * {@link EntityColumn}s that read an entity's values, and the way an entity is built from a row.
  * Everything Dialectica does with entities works on this model, however it was made.
  * <p>
@@ -41,7 +41,7 @@ import java.util.function.UnaryOperator;
  */
 public abstract class EntityTable<T> {
 	private final @NotNull Class<T> type;
-	private final @NotNull Table table;
+	private final @NotNull TableDefinition table;
 	private final @NotNull List<EntityColumn<T, ?>> columns;
 	private final @NotNull List<EntityColumn<T, ?>> primaryKey;
 
@@ -59,12 +59,12 @@ public abstract class EntityTable<T> {
 			@NotNull Class<T> type,
 			@NotNull String name,
 			@NotNull List<EntityColumn<T, ?>> columns,
-			@NotNull UnaryOperator<Table.Builder> constraints
+			@NotNull UnaryOperator<TableDefinition.Builder> constraints
 	) {
 		this.type = Objects.requireNonNull(type, "type");
 		this.columns = List.copyOf(columns);
 
-		Table.Builder builder = Table.builder(name);
+		TableDefinition.Builder builder = TableDefinition.builder(name);
 		for (EntityColumn<T, ?> column : this.columns)
 			builder.column(column.column());
 		this.table = Objects.requireNonNull(constraints.apply(builder), "constraints").build();
@@ -97,7 +97,7 @@ public abstract class EntityTable<T> {
 	 *
 	 * @return the schema table
 	 */
-	public final @NotNull Table table() {
+	public final @NotNull TableDefinition table() {
 		return table;
 	}
 

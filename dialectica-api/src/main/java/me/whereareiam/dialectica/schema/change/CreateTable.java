@@ -3,7 +3,7 @@ package me.whereareiam.dialectica.schema.change;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -19,14 +19,14 @@ public final class CreateTable implements SchemaChange {
 	/**
 	 * Table to create.
 	 */
-	private final @NotNull Table table;
+	private final @NotNull TableDefinition table;
 
 	/**
 	 * Creates the change.
 	 *
 	 * @param table table to create
 	 */
-	public CreateTable(@NotNull Table table) {
+	public CreateTable(@NotNull TableDefinition table) {
 		this.table = Objects.requireNonNull(table, "table");
 	}
 }

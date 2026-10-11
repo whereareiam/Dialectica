@@ -3,7 +3,7 @@ package me.whereareiam.dialectica.dialect.postgresql;
 import me.whereareiam.dialectica.Dialect;
 import me.whereareiam.dialectica.common.dialect.AnsiStatementRenderer;
 import me.whereareiam.dialectica.dialect.SqlStatement;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import org.jetbrains.annotations.NotNull;
 
 /**
@@ -20,7 +20,7 @@ public final class PostgresqlStatementRenderer extends AnsiStatementRenderer {
 	}
 
 	@Override
-	public @NotNull SqlStatement upsert(@NotNull Table table) {
+	public @NotNull SqlStatement upsert(@NotNull TableDefinition table) {
 		return insertOnConflict(table);
 	}
 }

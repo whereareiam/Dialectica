@@ -3,7 +3,7 @@ package me.whereareiam.dialectica.common.entity;
 import me.whereareiam.dialectica.entity.EntityColumn;
 import me.whereareiam.dialectica.entity.EntityTable;
 import me.whereareiam.dialectica.entity.Row;
-import me.whereareiam.dialectica.schema.Table;
+import me.whereareiam.dialectica.schema.TableDefinition;
 import org.jetbrains.annotations.NotNull;
 
 import java.lang.reflect.Constructor;
@@ -26,7 +26,7 @@ final class ReflectedEntityTable<T> extends EntityTable<T> {
 			Class<T> type,
 			String name,
 			List<EntityColumn<T, ?>> columns,
-			UnaryOperator<Table.Builder> constraints,
+			UnaryOperator<TableDefinition.Builder> constraints,
 			Function<Object[], T> instantiation
 	) {
 		super(type, name, columns, constraints);

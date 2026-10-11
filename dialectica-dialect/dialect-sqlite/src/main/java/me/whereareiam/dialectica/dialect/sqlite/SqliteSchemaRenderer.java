@@ -3,7 +3,7 @@ package me.whereareiam.dialectica.dialect.sqlite;
 import me.whereareiam.dialectica.Dialect;
 import me.whereareiam.dialectica.common.dialect.AnsiSchemaRenderer;
 import me.whereareiam.dialectica.exception.UnsupportedChangeException;
-import me.whereareiam.dialectica.schema.Column;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
 import me.whereareiam.dialectica.schema.change.AddColumn;
 import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.jetbrains.annotations.NotNull;
@@ -35,7 +35,7 @@ public final class SqliteSchemaRenderer extends AnsiSchemaRenderer {
 
 	@Override
 	protected @NotNull String addColumn(@NotNull AddColumn change) {
-		Column column = change.getColumn();
+		ColumnDefinition column = change.getColumn();
 		if (!column.isNullable() && column.getDefaultValue() == null)
 			throw new UnsupportedChangeException(dialect(), change, "SQLite adds a NOT NULL column only with a default");
 

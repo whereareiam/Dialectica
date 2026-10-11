@@ -3,7 +3,7 @@ package me.whereareiam.dialectica.schema.change;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import me.whereareiam.dialectica.schema.Index;
+import me.whereareiam.dialectica.schema.IndexDefinition;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -23,7 +23,7 @@ public final class CreateIndex implements SchemaChange {
 	/**
 	 * Index to create.
 	 */
-	private final @NotNull Index index;
+	private final @NotNull IndexDefinition index;
 
 	/**
 	 * Creates the change.
@@ -31,7 +31,7 @@ public final class CreateIndex implements SchemaChange {
 	 * @param table name of the indexed table
 	 * @param index index to create
 	 */
-	public CreateIndex(@NotNull String table, @NotNull Index index) {
+	public CreateIndex(@NotNull String table, @NotNull IndexDefinition index) {
 		this.table = Objects.requireNonNull(table, "table");
 		this.index = Objects.requireNonNull(index, "index");
 	}

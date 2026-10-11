@@ -3,7 +3,7 @@ package me.whereareiam.dialectica.schema.change;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.ToString;
-import me.whereareiam.dialectica.schema.Column;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.Objects;
@@ -24,7 +24,7 @@ public final class AddColumn implements SchemaChange {
 	/**
 	 * Column to add.
 	 */
-	private final @NotNull Column column;
+	private final @NotNull ColumnDefinition column;
 
 	/**
 	 * Creates the change.
@@ -32,7 +32,7 @@ public final class AddColumn implements SchemaChange {
 	 * @param table  name of the table to extend
 	 * @param column column to add
 	 */
-	public AddColumn(@NotNull String table, @NotNull Column column) {
+	public AddColumn(@NotNull String table, @NotNull ColumnDefinition column) {
 		this.table = Objects.requireNonNull(table, "table");
 		this.column = Objects.requireNonNull(column, "column");
 	}

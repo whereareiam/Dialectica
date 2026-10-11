@@ -3,6 +3,7 @@ package me.whereareiam.dialectica;
 import me.whereareiam.dialectica.common.entity.EntityReader;
 import me.whereareiam.dialectica.common.schema.JdbcInspection;
 import me.whereareiam.dialectica.entity.EntityTable;
+import me.whereareiam.dialectica.entity.annotation.Table;
 import org.jetbrains.annotations.NotNull;
 
 import java.sql.Connection;
@@ -26,7 +27,7 @@ public final class Dialectica {
 	/**
 	 * Reads the table of an entity type from its annotations.
 	 *
-	 * @param type entity type, annotated with {@link me.whereareiam.dialectica.entity.annotation.Table}
+	 * @param type entity type, annotated with {@link Table}
 	 * @param <T>  entity type
 	 * @return the entity's table
 	 * @throws IllegalArgumentException when the type is not a valid entity, naming the type and the

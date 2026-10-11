@@ -11,11 +11,11 @@ import java.util.List;
 import java.util.Objects;
 
 /**
- * A foreign key of a {@link Table}: columns of the table that reference columns of another table,
+ * A foreign key of a {@link TableDefinition}: columns of the table that reference columns of another table,
  * or of the same one. The referenced table is named, so it may belong to the same {@link Schema} or
  * to one created by another owner beforehand.
  * <pre>{@code
- * ForeignKey account = ForeignKey.builder("unique_id")
+ * ForeignKeyDefinition account = ForeignKeyDefinition.builder("unique_id")
  *         .references("identica_accounts", "unique_id")
  *         .onDelete(ReferentialAction.CASCADE)
  *         .build();
@@ -24,7 +24,7 @@ import java.util.Objects;
 @Getter
 @ToString
 @EqualsAndHashCode
-public final class ForeignKey {
+public final class ForeignKeyDefinition {
 	/**
 	 * Referencing columns of the owning table, in order.
 	 */
@@ -47,7 +47,7 @@ public final class ForeignKey {
 	 */
 	private final @NotNull ReferentialAction onDelete;
 
-	private ForeignKey(@NotNull Builder builder) {
+	private ForeignKeyDefinition(@NotNull Builder builder) {
 		this.columns = builder.columns;
 		this.referencedTable = requireName(builder.referencedTable, "referenced table");
 		this.referencedColumns = builder.referencedColumns;
@@ -83,7 +83,7 @@ public final class ForeignKey {
 	}
 
 	/**
-	 * Builds a {@link ForeignKey}.
+	 * Builds a {@link ForeignKeyDefinition}.
 	 */
 	public static final class Builder {
 		private final List<String> columns;
@@ -127,10 +127,10 @@ public final class ForeignKey {
 		 * @throws NullPointerException     when {@link #references(String, String...)} was not called
 		 * @throws IllegalArgumentException when the referencing and referenced columns differ in number
 		 */
-		public @NotNull ForeignKey build() {
+		public @NotNull ForeignKeyDefinition build() {
 			Objects.requireNonNull(referencedColumns, "referenced columns");
 
-			return new ForeignKey(this);
+			return new ForeignKeyDefinition(this);
 		}
 	}
 }

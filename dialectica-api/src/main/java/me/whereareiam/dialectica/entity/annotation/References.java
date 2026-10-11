@@ -15,6 +15,8 @@ import java.lang.annotation.Target;
  * @Id @References(entity = Account.class, onDelete = ReferentialAction.CASCADE)
  * UUID uniqueId;
  * }</pre>
+ * A key over several fields, such as one to a composite primary key, is declared with
+ * {@link ForeignKey} on the entity.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
