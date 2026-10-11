@@ -18,11 +18,11 @@ tasks.withType<JavaCompile>().configureEach { options.release.set(17) }
 dependencies {
     "compileOnly"(libs.findLibrary("jetbrains-annotations").get())
     "compileOnly"(libs.findLibrary("lombok").get())
-    "compileOnly"(libs.findLibrary("jdbi-core").get())
-    "compileOnly"(libs.findLibrary("jdbi-sqlobject").get())
     "annotationProcessor"(libs.findLibrary("lombok").get())
     "testImplementation"(libs.findLibrary("junit-jupiter").get())
     "testCompileOnly"(libs.findLibrary("jetbrains-annotations").get())
+    "testCompileOnly"(libs.findLibrary("lombok").get())
+    "testAnnotationProcessor"(libs.findLibrary("lombok").get())
     "testRuntimeOnly"(libs.findLibrary("junit-platform").get())
 }
 tasks.withType<Test>().configureEach {

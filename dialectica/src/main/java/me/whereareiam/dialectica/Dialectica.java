@@ -1,33 +1,53 @@
 package me.whereareiam.dialectica;
 
-import me.whereareiam.dialectica.common.schema.DefaultSchemaManager;
-import org.jdbi.v3.core.Jdbi;
+import me.whereareiam.dialectica.common.entity.EntityReader;
+import me.whereareiam.dialectica.common.schema.JdbcInspection;
+import me.whereareiam.dialectica.entity.EntityTable;
+import org.jetbrains.annotations.NotNull;
+
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.util.Objects;
 
 /**
- * Main entry point for Dialectica database schema management.
- * <p>
- * This class provides a convenient API that wires the public API to the implementation.
- * Users should use this class as the primary interface for Dialectica functionality.
- * <p>
- * Example usage:
+ * Entry point of Dialectica: reads the table of an annotated entity and writes schemas to a
+ * database.
  * <pre>{@code
- * Jdbi jdbi = Jdbi.create(dataSource);
- * jdbi.installPlugin(new DialectPlugin(DatabaseType.POSTGRES));
- *
- * Dialectica.schema(jdbi)
- *     .scanPackages("me.whereareiam.intercept.entity")
- *     .initialize();
+ * EntityTable<Account> accounts = Dialectica.entity(Account.class);
+ * try (Connection connection = dataSource.getConnection()) {
+ *     Dialectica.on(connection).create(Schema.of(accounts.table()));
+ * }
  * }</pre>
  */
 public final class Dialectica {
+	private Dialectica() {
+	}
+
 	/**
-	 * Creates a new SchemaManager for the given Jdbi instance.
-	 * This is the recommended way to initialize database schemas.
+	 * Reads the table of an entity type from its annotations.
 	 *
-	 * @param jdbi the Jdbi instance to use for schema operations
-	 * @return a new SchemaManager instance
+	 * @param type entity type, annotated with {@link me.whereareiam.dialectica.entity.annotation.Table}
+	 * @param <T>  entity type
+	 * @return the entity's table
+	 * @throws IllegalArgumentException when the type is not a valid entity, naming the type and the
+	 *                                  field at fault
 	 */
-	public static SchemaManager schema(Jdbi jdbi) {
-		return new DefaultSchemaManager(jdbi);
+	public static <T> @NotNull EntityTable<T> entity(@NotNull Class<T> type) {
+		return EntityReader.read(Objects.requireNonNull(type, "type"));
+	}
+
+	/**
+	 * Returns a writer for the database behind a connection. The connection's metadata selects the
+	 * {@link Dialect}; the connection stays owned by the caller.
+	 *
+	 * @param connection connection to write through
+	 * @return the writer
+	 * @throws SQLException             when the metadata cannot be read
+	 * @throws IllegalArgumentException when no available dialect accepts the database
+	 */
+	public static @NotNull SchemaWriter on(@NotNull Connection connection) throws SQLException {
+		Dialect dialect = Dialect.of(connection.getMetaData());
+
+		return new SchemaWriter(connection, dialect, new JdbcInspection(connection));
 	}
 }
