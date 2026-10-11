@@ -79,10 +79,7 @@ public final class EntityReader {
 
 			References references = field.getAnnotation(References.class);
 			if (references != null)
-				foreignKeys.add(ForeignKeyDefinition.builder(column.name())
-						.references(tableName(references.entity()), keyColumn(references.entity()))
-						.onDelete(references.onDelete())
-						.build());
+				foreignKeys.add(reference(type, field, column.name(), references));
 		}
 
 		for (ForeignKey foreignKey : type.getAnnotationsByType(ForeignKey.class))
@@ -131,14 +128,51 @@ public final class EntityReader {
 	}
 
 	/**
+	 * Reads a foreign key of one field, to the key of an entity or to a column of a named table.
+	 */
+	private static ForeignKeyDefinition reference(Class<?> type, Field field, String column, References references) {
+		boolean byEntity = references.entity() != void.class;
+		boolean byTable = !references.table().isEmpty();
+		if (byEntity == byTable)
+			throw invalid(type, field, "@References " + (byEntity ? "names both an entity and a table; give one" : "names neither an entity nor a table"));
+		if (byTable == references.column().isEmpty())
+			throw invalid(type, field, "@References names a column together with a table, and only then");
+
+		ForeignKeyDefinition.Builder builder = ForeignKeyDefinition.builder(column);
+		if (byEntity) builder.references(tableName(references.entity()), keyColumn(references.entity()));
+		else builder.references(references.table(), references.column());
+
+		return builder.onDelete(references.onDelete()).build();
+	}
+
+	/**
 	 * Reads a foreign key over several fields, which reference the referenced entity's key fields
-	 * one by one, in their declaration order.
+	 * one by one, in their declaration order, or the named table's columns in the order given.
 	 */
 	private static ForeignKeyDefinition foreignKey(Class<?> type, Map<String, Field> fields, ForeignKey foreignKey) {
+		String[] fieldNames = foreignKey.fields();
+		boolean byEntity = foreignKey.entity() != void.class;
+		boolean byTable = !foreignKey.table().isEmpty();
+		if (byEntity == byTable)
+			throw new IllegalArgumentException(type.getName() + ": the foreign key on " + List.of(fieldNames)
+					+ (byEntity ? " names both an entity and a table; give one" : " names neither an entity nor a table"));
+		if (byTable == (foreignKey.columns().length == 0))
+			throw new IllegalArgumentException(type.getName() + ": the foreign key on " + List.of(fieldNames)
+					+ " names columns together with a table, and only then");
+		if (byTable) {
+			if (fieldNames.length != foreignKey.columns().length)
+				throw new IllegalArgumentException(type.getName() + ": the foreign key on " + List.of(fieldNames)
+						+ " must name as many fields as columns of " + foreignKey.table() + ", not " + List.of(foreignKey.columns()));
+
+			return ForeignKeyDefinition.builder(columnNames(type, fields, fieldNames).toArray(String[]::new))
+					.references(foreignKey.table(), foreignKey.columns())
+					.onDelete(foreignKey.onDelete())
+					.build();
+		}
+
 		Class<?> referenced = foreignKey.entity();
 		String referencedTable = tableName(referenced);
 		List<Field> keys = keyFields(referenced);
-		String[] fieldNames = foreignKey.fields();
 		if (keys.isEmpty())
 			throw new IllegalArgumentException(referenced.getName() + " is referenced by " + type.getName() + ", so it needs an @Id field");
 		if (fieldNames.length != keys.size())

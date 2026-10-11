@@ -4,7 +4,8 @@ import java.util.List;
 
 /**
  * The DDL Identica 2.2.1 wrote by hand for the tables of {@link Account}, {@link ProviderLink},
- * {@link ProviderProfile} and {@link AccountReservation}, copied from its entities.
+ * {@link ProviderProfile}, {@link AccountReservation} and {@link VerificationSelection}, copied from
+ * its entities.
  */
 public final class Identica221 {
 	private Identica221() {
@@ -63,7 +64,17 @@ public final class Identica221 {
 							created_at %s NOT NULL,
 							expires_at %s NOT NULL
 						)
-						""".formatted(uuidType, timeType, timeType)
+						""".formatted(uuidType, timeType, timeType),
+				"""
+						CREATE TABLE IF NOT EXISTS identica_verification_selections (
+							unique_id %s NOT NULL,
+							provider_id VARCHAR(64) NOT NULL,
+							method_id VARCHAR(64) NOT NULL,
+							selected_at %s,
+							PRIMARY KEY (unique_id, provider_id),
+							FOREIGN KEY (unique_id) REFERENCES identica_accounts(unique_id) ON DELETE CASCADE
+						)
+						""".formatted(uuidType, timeType)
 		);
 	}
 }

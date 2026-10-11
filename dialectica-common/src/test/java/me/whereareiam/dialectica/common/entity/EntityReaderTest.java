@@ -177,6 +177,31 @@ class EntityReaderTest {
 		assertEquals(ReferentialAction.NO_ACTION, foreignKeys.get(1).getOnDelete());
 	}
 
+	@Table("identica_verification_selections")
+	@ForeignKey(fields = {"provider", "subject"}, table = "identica_provider_links", columns = {"provider_id", "provider_subject"})
+	record ForeignTableReference(
+			@Id @References(table = "identica_accounts", column = "unique_id", onDelete = ReferentialAction.CASCADE) UUID uniqueId,
+			@Length(64) String provider,
+			@Length(128) String subject
+	) {
+	}
+
+	@Test
+	void readsForeignKeysToANamedTable() {
+		EntityTable<ForeignTableReference> table = EntityReader.read(ForeignTableReference.class);
+
+		List<ForeignKeyDefinition> foreignKeys = table.table().getForeignKeys();
+		assertEquals(2, foreignKeys.size());
+		assertEquals(List.of("unique_id"), foreignKeys.get(0).getColumns());
+		assertEquals("identica_accounts", foreignKeys.get(0).getReferencedTable());
+		assertEquals(List.of("unique_id"), foreignKeys.get(0).getReferencedColumns());
+		assertEquals(ReferentialAction.CASCADE, foreignKeys.get(0).getOnDelete());
+		assertEquals(List.of("provider", "subject"), foreignKeys.get(1).getColumns());
+		assertEquals("identica_provider_links", foreignKeys.get(1).getReferencedTable());
+		assertEquals(List.of("provider_id", "provider_subject"), foreignKeys.get(1).getReferencedColumns());
+		assertEquals(ReferentialAction.NO_ACTION, foreignKeys.get(1).getOnDelete());
+	}
+
 	@Table("broken")
 	record UnsupportedType(@Id UUID id, double score) {
 	}
@@ -226,6 +251,33 @@ class EntityReaderTest {
 	record Keyless(UUID id) {
 	}
 
+	@Table("broken")
+	record ReferenceToEntityAndTable(@Id UUID id, @References(entity = Account.class, table = "identica_accounts", column = "unique_id") UUID owner) {
+	}
+
+	@Table("broken")
+	record ReferenceToNothing(@Id UUID id, @References UUID owner) {
+	}
+
+	@Table("broken")
+	record ReferenceToTableWithoutColumn(@Id UUID id, @References(table = "identica_accounts") UUID owner) {
+	}
+
+	@Table("broken")
+	@ForeignKey(fields = "id", entity = Account.class, table = "identica_accounts", columns = "unique_id")
+	record ForeignKeyToEntityAndTable(@Id UUID id) {
+	}
+
+	@Table("broken")
+	@ForeignKey(fields = "id", table = "identica_accounts")
+	record ForeignKeyToTableWithoutColumns(@Id UUID id) {
+	}
+
+	@Table("broken")
+	@ForeignKey(fields = {"provider", "subject"}, table = "identica_provider_links", columns = "provider_id")
+	record ForeignKeyToFewerColumns(@Id @Length(64) String provider, @Length(128) String subject) {
+	}
+
 	record NotAnnotated(UUID id) {
 	}
 
@@ -254,6 +306,12 @@ class EntityReaderTest {
 		assertMessage(ForeignKeyOfAnotherType.class, "subject", "of type java.lang.String, not long");
 		assertMessage(ForeignKeyToUnknownField.class, "missing", "no column field");
 		assertMessage(ForeignKeyToKeylessEntity.class, "Keyless", "needs an @Id field");
+		assertMessage(ReferenceToEntityAndTable.class, "owner", "names both an entity and a table");
+		assertMessage(ReferenceToNothing.class, "owner", "names neither an entity nor a table");
+		assertMessage(ReferenceToTableWithoutColumn.class, "owner", "names a column together with a table");
+		assertMessage(ForeignKeyToEntityAndTable.class, "[id]", "names both an entity and a table");
+		assertMessage(ForeignKeyToTableWithoutColumns.class, "[id]", "names columns together with a table");
+		assertMessage(ForeignKeyToFewerColumns.class, "[provider, subject]", "as many fields as columns of identica_provider_links");
 		assertMessage(NotAnnotated.class, "NotAnnotated", "not annotated with @Table");
 		assertMessage(NoUsableConstructor.class, "NoUsableConstructor", "needs a constructor");
 	}

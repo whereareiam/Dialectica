@@ -83,7 +83,9 @@ Every non-static, non-transient field the type declares is a column, in declarat
 | `@Length(n)` | A `String` stored as `varchar(n)`; a `String` without it is unlimited `text` |
 | `@Nullable` | The column accepts `NULL`; columns refuse it otherwise |
 | `@References(entity = X.class, onDelete = ...)` | A foreign key to `X`'s primary key, which must be a single `@Id` field |
+| `@References(table = "name", column = "name", onDelete = ...)` | A foreign key to a column of a table named directly |
 | `@ForeignKey(fields = {"fieldA", "fieldB"}, entity = X.class, onDelete = ...)` | A foreign key over fields to `X`'s whole primary key, one field for each of `X`'s `@Id` fields in their order; repeatable |
+| `@ForeignKey(fields = {"fieldA", "fieldB"}, table = "name", columns = {...}, onDelete = ...)` | A foreign key over fields to columns of a table named directly, in the order given; repeatable |
 | `@Unique({"fieldA", "fieldB"})` | A unique constraint over fields; repeatable |
 | `@Index(name = "...", columns = {...}, unique = ...)` | An index over fields; repeatable |
 
@@ -99,6 +101,20 @@ public record ProviderProfile(
         @Id @Length(64) String providerId,
         @Id @Length(128) String providerSubject,
         @Length(64) String providerUsername
+) {}
+```
+
+A foreign key names either an entity or a table, never both. Name the table when its entity is
+out of reach, for example when a plug-in's tables reference the core tables of the application it
+extends. The referenced columns then have to form that table's primary key or a unique key, and
+Dialectica cannot check their types:
+
+```java
+@Table("example_notes")
+public record Note(
+        @Id @Length(64) String id,
+        @References(table = "identica_accounts", column = "unique_id",
+                onDelete = ReferentialAction.CASCADE) UUID owner
 ) {}
 ```
 

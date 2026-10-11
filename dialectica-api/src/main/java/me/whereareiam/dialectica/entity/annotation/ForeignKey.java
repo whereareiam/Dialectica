@@ -10,9 +10,10 @@ import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
 
 /**
- * Makes fields of the entity, named by field name, a foreign key to the whole primary key of
- * another entity. The fields reference the other entity's {@link Id} fields in their declaration
- * order, so a composite key is referenced as a whole:
+ * Makes fields of the entity, named by field name, a foreign key, either to the whole primary key
+ * of another entity or to columns of a table named directly. The fields reference the other
+ * entity's {@link Id} fields in their declaration order, so a composite key is referenced as a
+ * whole:
  * <pre>{@code
  * @Table("identica_provider_profiles")
  * @ForeignKey(fields = {"providerId", "providerSubject"}, entity = ProviderLink.class,
@@ -23,7 +24,15 @@ import java.lang.annotation.Target;
  *         @Length(64) String providerUsername
  * ) {}
  * }</pre>
- * A key over a single field can also be declared with {@link References} on that field.
+ * Name the table when it belongs to another owner whose entity classes are out of reach; the
+ * fields then reference {@link #columns()} in order, which have to form its primary key or a unique
+ * key:
+ * <pre>{@code
+ * @ForeignKey(fields = {"providerId", "providerSubject"}, table = "identica_provider_links",
+ *         columns = {"provider_id", "provider_subject"})
+ * }</pre>
+ * Exactly one of {@link #entity()} and {@link #table()} is given. A key over a single field can
+ * also be declared with {@link References} on that field.
  */
 @Documented
 @Retention(RetentionPolicy.RUNTIME)
@@ -31,7 +40,8 @@ import java.lang.annotation.Target;
 @Repeatable(ForeignKey.List.class)
 public @interface ForeignKey {
 	/**
-	 * Returns the referencing fields, in the order of the referenced entity's {@link Id} fields.
+	 * Returns the referencing fields, in the order of the referenced entity's {@link Id} fields or
+	 * of {@link #columns()}.
 	 *
 	 * @return the field names
 	 */
@@ -40,9 +50,23 @@ public @interface ForeignKey {
 	/**
 	 * Returns the referenced entity, annotated with {@link Table}; it may be the declaring entity.
 	 *
-	 * @return the referenced entity type
+	 * @return the referenced entity type, or {@code void.class} when {@link #table()} is given
 	 */
-	Class<?> entity();
+	Class<?> entity() default void.class;
+
+	/**
+	 * Returns the name of the referenced table, instead of an {@link #entity()}.
+	 *
+	 * @return the referenced table, or an empty string when {@link #entity()} is given
+	 */
+	String table() default "";
+
+	/**
+	 * Returns the referenced columns of {@link #table()}, one for each of {@link #fields()}.
+	 *
+	 * @return the referenced columns, empty when {@link #entity()} is given
+	 */
+	String[] columns() default {};
 
 	/**
 	 * Returns what happens to this row when the referenced row is deleted.
