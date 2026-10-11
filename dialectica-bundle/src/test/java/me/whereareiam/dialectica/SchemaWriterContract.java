@@ -5,6 +5,7 @@ import me.whereareiam.dialectica.fixture.AccountReservation;
 import me.whereareiam.dialectica.fixture.Identica221;
 import me.whereareiam.dialectica.fixture.ProviderLink;
 import me.whereareiam.dialectica.fixture.ProviderProfile;
+import me.whereareiam.dialectica.fixture.VerificationSelection;
 import me.whereareiam.dialectica.schema.ColumnDefinition;
 import me.whereareiam.dialectica.schema.ForeignKeyDefinition;
 import me.whereareiam.dialectica.schema.IndexDefinition;
@@ -93,11 +94,13 @@ abstract class SchemaWriterContract {
 
 	private static final List<String> TABLES = List.of(
 			"dialectica_sessions", "dialectica_renamed_links", "dialectica_links", "dialectica_accounts",
-			"identica_provider_profiles", "identica_provider_links", "identica_account_reservations", "identica_accounts"
+			"identica_verification_selections", "identica_provider_profiles", "identica_provider_links",
+			"identica_account_reservations", "identica_accounts"
 	);
 
 	private static final List<String> IDENTICA_TABLES = List.of(
-			"identica_accounts", "identica_provider_links", "identica_provider_profiles", "identica_account_reservations"
+			"identica_accounts", "identica_provider_links", "identica_provider_profiles", "identica_account_reservations",
+			"identica_verification_selections"
 	);
 
 	protected Connection connection;
@@ -226,14 +229,18 @@ abstract class SchemaWriterContract {
 		assertTrue(legacy.get("identica_provider_links").contains("provider_subject"), legacy.toString());
 		assertTrue(legacy.get("identica_provider_links").contains("->identica_accounts.unique_id:cascade"), legacy.toString());
 		assertTrue(legacy.get("identica_provider_profiles").contains("provider_subject->identica_provider_links.provider_subject:cascade"), legacy.toString());
+		assertTrue(legacy.get("identica_verification_selections").contains("unique_id->identica_accounts.unique_id:cascade"), legacy.toString());
 		dropTables();
 
-		Dialectica.on(connection).create(Schema.of(
+		SchemaWriter writer = Dialectica.on(connection);
+		writer.create(Schema.of(
 				Dialectica.entity(ProviderProfile.class).table(),
 				Dialectica.entity(ProviderLink.class).table(),
 				Dialectica.entity(AccountReservation.class).table(),
 				Dialectica.entity(Account.class).table()
 		));
+		// A feature's schema of its own, referencing the core account table by name.
+		writer.create(Schema.of(Dialectica.entity(VerificationSelection.class).table()));
 
 		assertEquals(legacy, snapshot(IDENTICA_TABLES));
 	}
