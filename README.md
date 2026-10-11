@@ -341,9 +341,10 @@ The first command runs the rendering and reader tests, plus the SQLite and H2 te
 The second also runs the PostgreSQL, MariaDB and MySQL 8 tests in containers, which requires
 Docker. Set `DOCKER_HOST` when using a non-default socket.
 
-Development publishing runs only through the manual workflow. Releases run the complete test
-suite, publish public packages through the shared DevOps OIDC action, and attach binary, source
-and Javadoc JARs.
+Pull requests run the first command. Development builds run only through the manual workflow.
+Releases run the complete test suite, publish public packages through the shared DevOps OIDC
+action, and attach binary, source and Javadoc JARs.
 
-Release Drafter follows `dev`. Use `feature`, `change`, `bug`, or `dependencies` labels; add
-`major` for breaking changes and `skip-changelog` to omit an entry.
+Release Drafter follows `dev`. Pull request titles follow `Area: Description` and carry one of the
+`feature`, `change`, `bug`, `dependencies` or `skip-changelog` labels, with `major` for breaking
+changes; see `AGENTS.md`.

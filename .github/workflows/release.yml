@@ -1,0 +1,83 @@
+name: Release
+run-name: "Release ${{ github.event.release.tag_name }}"
+
+on:
+  release:
+    types: [published]
+
+concurrency:
+  group: release-${{ github.event.release.tag_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: Resolve release
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      tag: ${{ steps.release.outputs.tag }}
+    steps:
+      - name: Read release
+        id: release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+          release="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG")"
+          if jq -e '(.body // "") | contains("[Short subtitle]") or contains("[1-2 sentence summary")' <<<"$release" >/dev/null; then
+            echo "::error::Release $TAG still has the subtitle or summary placeholder of the draft; fill in .github/release-notes.md or edit the release, then publish again."
+            exit 1
+          fi
+          echo "tag=$(jq -r '.tag_name' <<<"$release")" >> "$GITHUB_OUTPUT"
+
+  verify:
+    name: Verify
+    needs: resolve
+    permissions:
+      contents: read
+      checks: write
+    uses: ./.github/workflows/reusable-verify.yml
+    with:
+      ref: ${{ needs.resolve.outputs.tag }}
+      version: ${{ needs.resolve.outputs.tag }}
+      containers: true
+      artifacts: true
+
+  publish:
+    name: Publish
+    needs: verify
+    permissions:
+      contents: read
+      id-token: write
+    uses: ./.github/workflows/reusable-publish.yml
+    with:
+      commit: ${{ needs.verify.outputs.commit }}
+      version: ${{ needs.verify.outputs.version }}
+
+  attach:
+    name: Attach jars to the release
+    needs: [resolve, verify, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v6
+        with:
+          name: dialectica-${{ needs.verify.outputs.version }}
+          path: jars
+
+      - name: Upload jars
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ needs.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          mapfile -t jars < <(find jars -name '*.jar' | sort)
+          duplicates="$(printf '%s\n' "${jars[@]##*/}" | sort | uniq -d)"
+          [[ -z "$duplicates" ]] || { echo "Duplicate jar names: $duplicates" >&2; exit 1; }
+          gh release upload "$TAG" "${jars[@]}" --clobber --repo "$GITHUB_REPOSITORY"
