@@ -3,6 +3,7 @@ package me.whereareiam.dialectica.common.entity;
 import me.whereareiam.dialectica.entity.EntityColumn;
 import me.whereareiam.dialectica.entity.EntityTable;
 import me.whereareiam.dialectica.entity.annotation.Column;
+import me.whereareiam.dialectica.entity.annotation.Default;
 import me.whereareiam.dialectica.entity.annotation.ForeignKey;
 import me.whereareiam.dialectica.entity.annotation.Id;
 import me.whereareiam.dialectica.entity.annotation.Index;
@@ -234,6 +235,8 @@ public final class EntityReader {
 		ColumnType columnType = columnType(type, field, javaType);
 		ColumnDefinition.Builder schemaColumn = ColumnDefinition.builder(columnName(field), columnType);
 		if (!nullable) schemaColumn.notNull();
+		Default defaultValue = field.getAnnotation(Default.class);
+		if (defaultValue != null) defaultValue(type, field, columnType, defaultValue.value(), schemaColumn);
 
 		return EntityColumn.of((Class) javaType, schemaColumn.build(), accessor(type, field));
 	}
@@ -250,6 +253,55 @@ public final class EntityReader {
 
 		throw invalid(type, field, "type " + field.getType().getName()
 				+ " has no column type; use UUID, String, long, int or boolean or their wrappers");
+	}
+
+	/**
+	 * Gives a column the default of its field, read by the column's type.
+	 */
+	private static void defaultValue(Class<?> type, Field field, ColumnType columnType, String value, ColumnDefinition.Builder column) {
+		if (columnType instanceof ColumnType.BoolType) {
+			column.defaultValue(booleanDefault(type, field, value));
+			return;
+		}
+		if (columnType instanceof ColumnType.BigintType || columnType instanceof ColumnType.IntegerType) {
+			column.defaultValue(numberDefault(type, field, columnType, value));
+			return;
+		}
+		if (columnType instanceof ColumnType.UuidType) {
+			column.defaultValue(uuidDefault(type, field, value));
+			return;
+		}
+		if (columnType instanceof ColumnType.VarcharType varchar && value.codePointCount(0, value.length()) > varchar.length())
+			throw invalid(type, field, "@Default \"" + value + "\" is longer than the field's @Length(" + varchar.length() + ")");
+
+		column.defaultValue(value);
+	}
+
+	private static boolean booleanDefault(Class<?> type, Field field, String value) {
+		if (value.equals("true")) return true;
+		if (value.equals("false")) return false;
+
+		throw invalid(type, field, "@Default of a boolean field is true or false, not \"" + value + "\"");
+	}
+
+	private static long numberDefault(Class<?> type, Field field, ColumnType columnType, String value) {
+		try {
+			if (columnType instanceof ColumnType.IntegerType) return Integer.parseInt(value);
+			return Long.parseLong(value);
+		} catch (NumberFormatException e) {
+			throw invalid(type, field, "@Default of a " + field.getType().getSimpleName() + " field is a decimal number in its range, not \"" + value + "\"");
+		}
+	}
+
+	private static String uuidDefault(Class<?> type, Field field, String value) {
+		try {
+			UUID uuid = UUID.fromString(value);
+			if (uuid.toString().equalsIgnoreCase(value)) return uuid.toString();
+		} catch (IllegalArgumentException ignored) {
+			// refused below
+		}
+
+		throw invalid(type, field, "@Default of a UUID field is a UUID in its 36-character form, not \"" + value + "\"");
 	}
 
 	private static ColumnType varchar(Class<?> type, Field field, int length) {

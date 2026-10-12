@@ -9,6 +9,7 @@ import me.whereareiam.dialectica.entity.EntityColumn;
 import me.whereareiam.dialectica.entity.EntityTable;
 import me.whereareiam.dialectica.entity.Row;
 import me.whereareiam.dialectica.entity.annotation.Column;
+import me.whereareiam.dialectica.entity.annotation.Default;
 import me.whereareiam.dialectica.entity.annotation.ForeignKey;
 import me.whereareiam.dialectica.entity.annotation.Id;
 import me.whereareiam.dialectica.entity.annotation.Index;
@@ -30,6 +31,7 @@ import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -202,6 +204,61 @@ class EntityReaderTest {
 		assertEquals(ReferentialAction.NO_ACTION, foreignKeys.get(1).getOnDelete());
 	}
 
+	@Table("identica_settings")
+	record Defaulted(
+			@Id @Length(32) String name,
+			@Default("true") boolean enabled,
+			@Default("false") @Nullable Boolean locked,
+			@Default("-9000000000") long since,
+			@Default("3") Integer attempts,
+			@Default("it's a\\b") String note,
+			@Default("en") @Length(2) String language,
+			@Default("00000000-0000-0000-0000-00000000000A") UUID owner,
+			@Nullable Long untouched
+	) {
+	}
+
+	@Test
+	void readsDefaultsByTheFieldsType() {
+		EntityTable<Defaulted> table = EntityReader.read(Defaulted.class);
+
+		assertEquals(true, table.column("enabled").column().getDefaultValue());
+		assertEquals(false, table.column("locked").column().getDefaultValue());
+		assertEquals(-9_000_000_000L, table.column("since").column().getDefaultValue());
+		assertEquals(3L, table.column("attempts").column().getDefaultValue());
+		assertEquals("it's a\\b", table.column("note").column().getDefaultValue());
+		assertEquals("en", table.column("language").column().getDefaultValue());
+		assertEquals("00000000-0000-0000-0000-00000000000a", table.column("owner").column().getDefaultValue());
+		assertNull(table.column("untouched").column().getDefaultValue());
+		assertNull(table.column("name").column().getDefaultValue());
+		assertFalse(table.column("enabled").column().isNullable());
+		assertTrue(table.column("locked").column().isNullable());
+	}
+
+	@Table("broken")
+	record DefaultBooleanOfAnotherWord(@Id UUID id, @Default("yes") boolean enabled) {
+	}
+
+	@Table("broken")
+	record DefaultNumberOfText(@Id UUID id, @Default("zero") long since) {
+	}
+
+	@Table("broken")
+	record DefaultIntegerOutOfRange(@Id UUID id, @Default("3000000000") int attempts) {
+	}
+
+	@Table("broken")
+	record DefaultUuidOfText(@Id UUID id, @Default("nobody") UUID owner) {
+	}
+
+	@Table("broken")
+	record DefaultUuidOfShortForm(@Id UUID id, @Default("0-0-0-0-1") UUID owner) {
+	}
+
+	@Table("broken")
+	record DefaultLongerThanLength(@Id UUID id, @Default("eng") @Length(2) String language) {
+	}
+
 	@Table("broken")
 	record UnsupportedType(@Id UUID id, double score) {
 	}
@@ -312,6 +369,12 @@ class EntityReaderTest {
 		assertMessage(ForeignKeyToEntityAndTable.class, "[id]", "names both an entity and a table");
 		assertMessage(ForeignKeyToTableWithoutColumns.class, "[id]", "names columns together with a table");
 		assertMessage(ForeignKeyToFewerColumns.class, "[provider, subject]", "as many fields as columns of identica_provider_links");
+		assertMessage(DefaultBooleanOfAnotherWord.class, "enabled", "is true or false, not \"yes\"");
+		assertMessage(DefaultNumberOfText.class, "since", "decimal number in its range, not \"zero\"");
+		assertMessage(DefaultIntegerOutOfRange.class, "attempts", "decimal number in its range, not \"3000000000\"");
+		assertMessage(DefaultUuidOfText.class, "owner", "36-character form, not \"nobody\"");
+		assertMessage(DefaultUuidOfShortForm.class, "owner", "36-character form, not \"0-0-0-0-1\"");
+		assertMessage(DefaultLongerThanLength.class, "language", "longer than the field's @Length(2)");
 		assertMessage(NotAnnotated.class, "NotAnnotated", "not annotated with @Table");
 		assertMessage(NoUsableConstructor.class, "NoUsableConstructor", "needs a constructor");
 	}
