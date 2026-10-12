@@ -24,6 +24,7 @@ import java.util.stream.IntStream;
  * <pre>{@code
  * EntityAccess<Account> accounts = EntityAccess.of(jdbi, Dialectica.entity(Account.class));
  * accounts.upsert(account);
+ * accounts.update(account.uniqueId()).set("last_seen_at", now).execute();
  * Optional<Account> found = accounts.find(account.uniqueId());
  * }</pre>
  * Each call runs on a handle of the {@code Jdbi}. Every operation but {@link #insert(Object)}
@@ -38,7 +39,7 @@ public final class EntityAccess<T> {
 	private final EntityRowMapper<T> mapper;
 	private final SqlStatement insert;
 	private final @Nullable SqlStatement upsert;
-	private final @Nullable SqlStatement update;
+	private final @Nullable SqlStatement replace;
 	private final @Nullable SqlStatement select;
 	private final @Nullable SqlStatement delete;
 
@@ -52,7 +53,7 @@ public final class EntityAccess<T> {
 		boolean keyed = !table.primaryKey().isEmpty();
 		this.insert = renderer.insert(table.table());
 		this.upsert = keyed ? renderer.upsert(table.table()) : null;
-		this.update = keyed && table.primaryKey().size() < table.columns().size() ? renderer.update(table.table()) : null;
+		this.replace = keyed && table.primaryKey().size() < table.columns().size() ? renderer.replace(table.table()) : null;
 		this.select = keyed ? renderer.select(table.table()) : null;
 		this.delete = keyed ? renderer.delete(table.table()) : null;
 	}
@@ -99,13 +100,34 @@ public final class EntityAccess<T> {
 	}
 
 	/**
-	 * Updates every column outside the primary key of the row with the entity's primary key.
+	 * Replaces every column outside the primary key of the row with the entity's primary key by the
+	 * entity's values.
 	 *
 	 * @param entity entity to write
 	 * @return whether a row had that key
 	 */
-	public boolean update(@NotNull T entity) {
-		return write(require(update, "update"), entity) > 0;
+	public boolean replace(@NotNull T entity) {
+		return write(require(replace, "replace"), entity) > 0;
+	}
+
+	/**
+	 * Starts an update of some columns of the row with a primary key, which changes only the columns
+	 * it sets and, given conditions, only while the row matches them:
+	 * <pre>{@code
+	 * accounts.update(uniqueId).set("last_seen_at", now).execute();
+	 * boolean used = codes.update(uniqueId, code).set("used_at", now).when("used_at", 0L).execute();
+	 * }</pre>
+	 *
+	 * @param key values of the primary key columns, in key order
+	 * @return the update, which runs on {@link EntityUpdate#execute()}
+	 * @throws IllegalArgumentException when the values do not fit the key's columns
+	 * @throws IllegalStateException    when the table has no primary key
+	 */
+	public @NotNull EntityUpdate<T> update(@NotNull Object... key) {
+		if (table.primaryKey().isEmpty())
+			throw new IllegalStateException("Cannot update " + table.table().getName() + ": it needs a primary key");
+
+		return new EntityUpdate<>(this, key(key));
 	}
 
 	/**
@@ -136,13 +158,44 @@ public final class EntityAccess<T> {
 		return jdbi.withHandle(handle -> bind(handle.createUpdate(statement.getSql()), arguments).execute()) > 0;
 	}
 
+	/**
+	 * Runs a statement that writes rows.
+	 *
+	 * @param statement statement to run
+	 * @param arguments values of its parameters, in order
+	 * @return the number of rows the statement matched
+	 */
+	int execute(SqlStatement statement, List<Argument> arguments) {
+		return jdbi.withHandle(handle -> bind(handle.createUpdate(statement.getSql()), arguments).execute());
+	}
+
+	/**
+	 * Returns the dialect the statements are rendered for.
+	 *
+	 * @return the dialect
+	 */
+	Dialect dialect() {
+		return dialect;
+	}
+
+	/**
+	 * Binds a value of a column type as the dialect stores it.
+	 *
+	 * @param type  column type
+	 * @param value value, or {@code null}
+	 * @return the argument
+	 */
+	Argument argument(ColumnType type, @Nullable Object value) {
+		return (position, statement, context) -> dialect.bind(statement, position, type, value);
+	}
+
 	private int write(SqlStatement statement, T entity) {
 		Objects.requireNonNull(entity, "entity");
 		List<Argument> arguments = statement.getParameters().stream()
 				.map(name -> argument(table.column(name), entity))
 				.toList();
 
-		return jdbi.withHandle(handle -> bind(handle.createUpdate(statement.getSql()), arguments).execute());
+		return execute(statement, arguments);
 	}
 
 	private List<Argument> key(Object[] values) {
@@ -166,10 +219,6 @@ public final class EntityAccess<T> {
 		return argument(column.column().getType(), column.get(entity));
 	}
 
-	private Argument argument(ColumnType type, Object value) {
-		return (position, statement, context) -> dialect.bind(statement, position, type, value);
-	}
-
 	private static <S extends org.jdbi.v3.core.statement.SqlStatement<S>> S bind(S statement, List<Argument> arguments) {
 		for (int index = 0; index < arguments.size(); index++)
 			statement.bind(index, arguments.get(index));
@@ -180,7 +229,7 @@ public final class EntityAccess<T> {
 	private SqlStatement require(@Nullable SqlStatement statement, String operation) {
 		if (statement == null)
 			throw new IllegalStateException("Cannot " + operation + " " + table.table().getName()
-					+ ": it needs a primary key and, to update, a column outside it");
+					+ ": it needs a primary key and, to replace, a column outside it");
 
 		return statement;
 	}

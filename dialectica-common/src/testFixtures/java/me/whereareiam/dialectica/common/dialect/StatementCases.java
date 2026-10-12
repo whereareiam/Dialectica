@@ -39,6 +39,12 @@ public final class StatementCases {
 			.primaryKey("unique_id", "order")
 			.build();
 
+	public static final TableDefinition SETTINGS = TableDefinition.builder("identica_settings")
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+			.column(ColumnDefinition.builder("order", ColumnType.varchar(16)).build())
+			.primaryKey("unique_id")
+			.build();
+
 	public static final TableDefinition UNKEYED = TableDefinition.builder("identica_events")
 			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).build())
 			.build();
@@ -68,9 +74,10 @@ public final class StatementCases {
 
 	private static List<String> names() {
 		return List.of(
-				"insert reservation", "upsert reservation", "update reservation", "select reservation", "delete reservation",
-				"insert link", "upsert link", "update link", "select link", "delete link",
-				"upsert key-only table", "select quoted column"
+				"insert reservation", "upsert reservation", "replace reservation", "select reservation", "delete reservation",
+				"insert link", "upsert link", "replace link", "select link", "delete link",
+				"upsert key-only table", "select quoted column",
+				"update reservation conditionally", "update link where a column is null", "update quoted column conditionally"
 		);
 	}
 
@@ -78,16 +85,19 @@ public final class StatementCases {
 		return List.of(
 				renderer -> renderer.insert(RESERVATIONS),
 				renderer -> renderer.upsert(RESERVATIONS),
-				renderer -> renderer.update(RESERVATIONS),
+				renderer -> renderer.replace(RESERVATIONS),
 				renderer -> renderer.select(RESERVATIONS),
 				renderer -> renderer.delete(RESERVATIONS),
 				renderer -> renderer.insert(LINKS),
 				renderer -> renderer.upsert(LINKS),
-				renderer -> renderer.update(LINKS),
+				renderer -> renderer.replace(LINKS),
 				renderer -> renderer.select(LINKS),
 				renderer -> renderer.delete(LINKS),
 				renderer -> renderer.upsert(FLAGS),
-				renderer -> renderer.select(FLAGS)
+				renderer -> renderer.select(FLAGS),
+				renderer -> renderer.update(RESERVATIONS, List.of("unique_id", "expires_at"), List.of("expires_at"), List.of()),
+				renderer -> renderer.update(LINKS, List.of("is_primary"), List.of(), List.of("unique_id")),
+				renderer -> renderer.update(SETTINGS, List.of("order"), List.of("order"), List.of())
 		);
 	}
 }
