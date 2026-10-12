@@ -257,6 +257,7 @@ jdbi.installPlugin(new DialecticaPlugin());
 
 EntityAccess<Account> accounts = EntityAccess.of(jdbi, Dialectica.entity(Account.class));
 accounts.insert(account);
+boolean created = accounts.insertIfAbsent(account); // false when a row holds one of its keys
 accounts.upsert(account);
 accounts.replace(account);                         // true when a row had the key
 Optional<Account> found = accounts.find(uniqueId);
@@ -264,24 +265,62 @@ accounts.delete(uniqueId);                         // true when a row had the ke
 
 EntityAccess<ProviderLink> links = EntityAccess.of(jdbi, Dialectica.entity(ProviderLink.class));
 links.find("premium", subject);                    // composite key, in key order
+links.upsert(link, "is_primary", "last_seen_at");  // a known link changes only these columns
 ```
 
 `DialecticaPlugin` reads the dialect from a connection when it is installed, or takes one:
 `new DialecticaPlugin(dialect)`. It binds and maps `UUID` and `Boolean` values the way the
 database stores them, so a UUID is text on SQLite and `CHAR(36)` on MySQL. This also applies to
-hand-written queries.
+hand-written queries. Every operation but `insert` and `insertIfAbsent` needs a primary key.
 
-The upsert depends on the database:
+### Inserting if absent
 
-| Database | Upsert |
-|----------|--------|
-| PostgreSQL, SQLite | `INSERT ... ON CONFLICT (key) DO UPDATE SET column = excluded.column` |
-| MySQL 8.0.19+ | `INSERT ... AS excluded ON DUPLICATE KEY UPDATE column = excluded.column` |
-| MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE column = VALUES(column)` |
-| H2 | `MERGE INTO ... KEY (key) VALUES (...)` |
+`insertIfAbsent` inserts the entity unless a row already holds its primary key or one of its unique
+keys, and leaves that row as it is. It returns whether it inserted. Any other failure, such as a
+`NULL` in a `NOT NULL` column or a missing referenced row, still throws. Of several instances that
+insert the same key at once, exactly one gets `true`:
 
-On MySQL and MariaDB, a taken unique key also turns the insert into an update; elsewhere only the
-primary key does. Every operation but `insert` needs a primary key.
+```java
+if (credentials.insertIfAbsent(new CredentialAccount(uniqueId, username, hash))) {
+    // this instance created the account
+}
+```
+
+| Database | Insert if absent |
+|----------|------------------|
+| PostgreSQL, SQLite | `INSERT ... ON CONFLICT DO NOTHING` |
+| MySQL, MariaDB, H2 | `INSERT`, whose duplicate key error reads as `false` |
+
+MySQL's `INSERT IGNORE` would also skip or alter rows for other errors, and its
+`ON DUPLICATE KEY UPDATE` reports a kept row like an inserted one, so neither is used. A failed insert
+does not end a transaction on MySQL, MariaDB or H2. `dialect.isKeyConflict(exception)` tells
+whether an exception reports a taken key; on SQLite it never does, because SQLite's driver reports
+every refused constraint alike.
+
+### Upserting
+
+`upsert(entity)` inserts the entity or, when a row has its primary key, updates every column of that
+row outside the key. `upsert(entity, columns...)` updates only the columns it names and leaves the
+others as the row holds them; it also takes the table's `EntityColumn`s. The primary key decides
+whether the row exists. A row that holds another unique key of the entity, such as a second link of
+the same account to the same provider, fails the upsert with a `KeyConflictException` on every
+database and stays as it is. Of several instances that write the same key at once, each one
+succeeds, and the row ends with the values of the last.
+
+| Database | Table whose only unique key is the primary key | Table with other unique keys |
+|----------|-----------------------------------------------|------------------------------|
+| PostgreSQL, SQLite | `INSERT ... ON CONFLICT (key) DO UPDATE SET column = excluded.column` | `INSERT ... ON CONFLICT DO NOTHING`, then `UPDATE ... WHERE key` |
+| MySQL 8.0.19+ | `INSERT ... AS excluded ON DUPLICATE KEY UPDATE column = excluded.column` | `INSERT`, then `UPDATE ... WHERE key` on a duplicate key |
+| MariaDB | `INSERT ... ON DUPLICATE KEY UPDATE column = VALUES(column)` | `INSERT`, then `UPDATE ... WHERE key` on a duplicate key |
+| H2 | `INSERT`, then `UPDATE ... WHERE key` on a duplicate key | the same |
+
+The second form exists because PostgreSQL's `ON CONFLICT (key)` lets a concurrent insert fail on
+another unique key, and MySQL's and MariaDB's `ON DUPLICATE KEY UPDATE` would update the row that
+holds whichever key is taken. When its update matches no row, the insert met another unique key,
+which is the `KeyConflictException`; its cause is the database's error where there is one. MySQL
+and MariaDB connections that set `useAffectedRows=true` report an update that keeps the row's
+values as matching no row, so there an upsert of a table with other unique keys that changes
+nothing also throws it.
 
 ### Updating some columns
 
@@ -354,12 +393,15 @@ Each dialect renders SQL without connecting to the database:
 ```java
 Dialect dialect = Dialect.of(connection.getMetaData());
 List<String> ddl = dialect.schemaRenderer().render(new CreateTable(accounts));
-SqlStatement upsert = dialect.statementRenderer().upsert(accounts);
+Upsert upsert = dialect.statementRenderer().upsert(accounts, List.of("username", "is_locked"));
 SqlStatement lock = dialect.statementRenderer().update(accounts, List.of("is_locked"),
         List.of(new Condition("is_locked", Comparison.EQUALS)));
 ```
 
-The renderers and `SqlStatement` are in `me.whereareiam.dialectica.dialect`. `replace` renders the
+The renderers, `SqlStatement` and `Upsert` are in `me.whereareiam.dialectica.dialect`. An `Upsert`
+is either `Upsert.OnConflict`, one statement, or `Upsert.InsertThenUpdate`, an insert and the update
+to run when it inserts no row or fails with a key conflict. `insertIfAbsent` renders the insert that
+skips or fails on a taken key. `replace` renders the
 update of every column outside the key, and `update` of the columns given, with `Condition`s that
 compare a column by a `Comparison`: equal to a parameter, `NULL`, or, for number columns, below,
 above, at most or at least a parameter. Schema statements are plain DDL without `IF [NOT] EXISTS`. Entity statements use a positional
@@ -392,7 +434,9 @@ public final class ExampleDialect extends AnsiDialect {
 }
 ```
 
-The schema renderer supplies the column types, and the statement renderer supplies the upsert.
+The schema renderer supplies the column types, and the statement renderer supplies the upsert and
+the insert if absent from the forms `AnsiStatementRenderer` renders. The dialect's `isKeyConflict`
+recognises the error a plain insert fails with on a taken key.
 Override whatever else the database writes differently, as the MariaDB dialect does on top of
 MySQL's.
 

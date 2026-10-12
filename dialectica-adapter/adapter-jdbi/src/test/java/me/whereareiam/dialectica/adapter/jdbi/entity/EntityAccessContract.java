@@ -6,9 +6,11 @@ import me.whereareiam.dialectica.fixture.Account;
 import me.whereareiam.dialectica.fixture.AccountReservation;
 import me.whereareiam.dialectica.fixture.ProviderLink;
 import me.whereareiam.dialectica.entity.EntityColumn;
+import me.whereareiam.dialectica.exception.KeyConflictException;
 import me.whereareiam.dialectica.schema.Schema;
 import me.whereareiam.dialectica.schema.change.DropTable;
 import org.jdbi.v3.core.Jdbi;
+import org.jdbi.v3.core.statement.StatementException;
 import org.jdbi.v3.sqlobject.SqlObjectPlugin;
 import org.jdbi.v3.sqlobject.customizer.Bind;
 import org.jdbi.v3.sqlobject.statement.SqlQuery;
@@ -108,6 +110,131 @@ abstract class EntityAccessContract {
 				.mapTo(Long.class)
 				.one());
 		assertEquals(1, rows);
+	}
+
+	@Test
+	void insertsIfAbsentAndKeepsTheRowThatHoldsAKey() {
+		accounts.insert(new Account(ALICE, "Alice", null, null));
+		ProviderLink link = new ProviderLink("premium", "alice-subject", ALICE, true, 10L, null);
+
+		assertTrue(links.insertIfAbsent(link));
+		assertFalse(links.insertIfAbsent(new ProviderLink("premium", "alice-subject", ALICE, false, 20L, 30L)));
+		assertFalse(links.insertIfAbsent(new ProviderLink("premium", "other-subject", ALICE, false, 20L, 30L)));
+		assertTrue(links.insertIfAbsent(new ProviderLink("credential", "alice", ALICE, false, null, null)));
+
+		assertEquals(Optional.of(link), links.find("premium", "alice-subject"));
+		assertEquals(Optional.empty(), links.find("premium", "other-subject"));
+	}
+
+	@Test
+	void stillFailsAnInsertIfAbsentForAnythingButATakenKey() {
+		assertThrows(StatementException.class, () -> accounts.insertIfAbsent(new Account(ALICE, null, null, null)));
+		assertEquals(Optional.empty(), accounts.find(ALICE));
+	}
+
+	@Test
+	void letsExactlyOneOfTwoConcurrentInsertsIfAbsentInsert() throws Exception {
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			for (int round = 0; round < 20; round++) {
+				String key = "name:round-" + round;
+				CyclicBarrier start = new CyclicBarrier(2);
+				List<Future<Boolean>> inserts = new ArrayList<>();
+				for (long contender = 1; contender <= 2; contender++) {
+					long createdAt = contender;
+					inserts.add(executor.submit(() -> {
+						start.await(10, TimeUnit.SECONDS);
+						return reservations.insertIfAbsent(new AccountReservation(key, ALICE, createdAt, 0L));
+					}));
+				}
+
+				boolean first = inserts.get(0).get(30, TimeUnit.SECONDS);
+				boolean second = inserts.get(1).get(30, TimeUnit.SECONDS);
+
+				assertTrue(first ^ second, "round " + round + ": first " + first + ", second " + second);
+				assertEquals(first ? 1L : 2L, reservations.find(key).orElseThrow().createdAt());
+			}
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void upsertsOnlyTheColumnsItNames() {
+		accounts.insert(new Account(ALICE, "Alice", null, null));
+		EntityColumn<ProviderLink, Long> lastSeenAt = (EntityColumn<ProviderLink, Long>) links.table().column("last_seen_at");
+
+		links.upsert(new ProviderLink("premium", "alice-subject", ALICE, true, 10L, 11L), "is_primary", "last_seen_at");
+		assertEquals(Optional.of(new ProviderLink("premium", "alice-subject", ALICE, true, 10L, 11L)), links.find("premium", "alice-subject"));
+
+		links.upsert(new ProviderLink("premium", "alice-subject", ALICE, false, 20L, 21L), "is_primary", "last_seen_at");
+		assertEquals(Optional.of(new ProviderLink("premium", "alice-subject", ALICE, false, 10L, 21L)), links.find("premium", "alice-subject"));
+
+		links.upsert(new ProviderLink("premium", "alice-subject", ALICE, true, 30L, 31L), lastSeenAt);
+		assertEquals(Optional.of(new ProviderLink("premium", "alice-subject", ALICE, false, 10L, 31L)), links.find("premium", "alice-subject"));
+
+		links.upsert(new ProviderLink("premium", "alice-subject", ALICE, true, 40L, 41L));
+		assertEquals(Optional.of(new ProviderLink("premium", "alice-subject", ALICE, true, 40L, 41L)), links.find("premium", "alice-subject"));
+	}
+
+	@Test
+	void failsAnUpsertThatTakesAnotherUniqueKey() {
+		accounts.insert(new Account(ALICE, "Alice", null, null));
+		ProviderLink link = new ProviderLink("premium", "alice-subject", ALICE, true, 10L, null);
+		links.insert(link);
+		ProviderLink second = new ProviderLink("premium", "other-subject", ALICE, false, 20L, 21L);
+
+		assertThrows(KeyConflictException.class, () -> links.upsert(second));
+		KeyConflictException conflict = assertThrows(KeyConflictException.class, () -> links.upsert(second, "is_primary", "last_seen_at"));
+		assertEquals("identica_provider_links", conflict.getTable());
+
+		assertEquals(Optional.of(link), links.find("premium", "alice-subject"));
+		assertEquals(Optional.empty(), links.find("premium", "other-subject"));
+	}
+
+	@Test
+	void letsTwoConcurrentUpsertsOfAKeyBothSucceed() throws Exception {
+		accounts.insert(new Account(ALICE, "Alice", null, null));
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			for (int round = 0; round < 20; round++) {
+				String subject = "subject-" + round;
+				CyclicBarrier start = new CyclicBarrier(2);
+				List<Future<?>> upserts = new ArrayList<>();
+				for (long contender = 1; contender <= 2; contender++) {
+					long seenAt = contender;
+					upserts.add(executor.submit(() -> {
+						start.await(10, TimeUnit.SECONDS);
+						links.upsert(new ProviderLink("premium", subject, ALICE, false, 5L, seenAt), "last_seen_at");
+						return null;
+					}));
+				}
+				for (Future<?> upsert : upserts)
+					upsert.get(30, TimeUnit.SECONDS);
+
+				ProviderLink stored = links.find("premium", subject).orElseThrow();
+				assertTrue(stored.getLastSeenAt() == 1L || stored.getLastSeenAt() == 2L, "round " + round + ": " + stored);
+				assertEquals(5L, stored.getLinkedAt());
+				links.delete("premium", subject);
+			}
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
+	@SuppressWarnings({"unchecked", "rawtypes"})
+	void refusesUpsertsThatDoNotFitTheTable() {
+		EntityColumn<ProviderLink, Boolean> foreign = (EntityColumn) accounts.table().column("username");
+		ProviderLink link = new ProviderLink("premium", "alice-subject", ALICE, true, 10L, null);
+
+		assertThrows(IllegalArgumentException.class, () -> links.upsert(link, "missing"));
+		assertThrows(IllegalArgumentException.class, () -> links.upsert(link, "provider_id"));
+		assertThrows(IllegalArgumentException.class, () -> links.upsert(link, "is_primary", "is_primary"));
+		assertThrows(IllegalArgumentException.class, () -> links.upsert(link, new String[0]));
+		assertThrows(IllegalArgumentException.class, () -> links.upsert(link, foreign));
+		assertEquals(Optional.empty(), links.find("premium", "alice-subject"));
 	}
 
 	@Test

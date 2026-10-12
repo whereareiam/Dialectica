@@ -5,6 +5,7 @@ import me.whereareiam.dialectica.dialect.Comparison;
 import me.whereareiam.dialectica.dialect.Condition;
 import me.whereareiam.dialectica.dialect.SqlStatement;
 import me.whereareiam.dialectica.dialect.StatementRenderer;
+import me.whereareiam.dialectica.dialect.Upsert;
 import me.whereareiam.dialectica.schema.ColumnDefinition;
 import me.whereareiam.dialectica.schema.TableDefinition;
 import me.whereareiam.dialectica.schema.type.ColumnType;
@@ -18,8 +19,9 @@ import java.util.StringJoiner;
 import java.util.function.Function;
 
 /**
- * Renders the entity statements every supported dialect shares. Upserts differ between dialects,
- * so each dialect's renderer supplies its own.
+ * Renders the entity statements every supported dialect shares. Upserts and inserts if absent
+ * differ between dialects, so each dialect's renderer supplies its own from the forms rendered
+ * here.
  */
 public abstract class AnsiStatementRenderer implements StatementRenderer {
 	private final @NotNull Dialect dialect;
@@ -60,10 +62,7 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 		requireKey(table);
 		if (columns.isEmpty())
 			throw new IllegalArgumentException("An update of " + table.getName() + " needs a column to set");
-		requireColumns(table, columns);
-		for (String column : columns)
-			if (table.getPrimaryKey().contains(column))
-				throw new IllegalArgumentException("Column " + column + " of " + table.getName() + " belongs to the primary key and cannot be set");
+		requireSettable(table, columns);
 		requireConditions(table, conditions);
 
 		List<String> parameters = new ArrayList<>(columns);
@@ -93,21 +92,84 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	}
 
 	/**
-	 * Renders an upsert as {@code INSERT ... ON CONFLICT (key) DO UPDATE SET column = excluded.column},
-	 * as PostgreSQL and SQLite write it. A table whose columns all belong to the key does nothing on
-	 * conflict.
+	 * Renders an insert that does nothing when a row holds one of the inserted row's keys, as
+	 * {@code INSERT ... ON CONFLICT DO NOTHING}, as PostgreSQL and SQLite write it.
 	 *
-	 * @param table table to write to
+	 * @param table table to insert into
 	 * @return the statement, parameterized by every column in table order
 	 */
-	protected final @NotNull SqlStatement insertOnConflict(@NotNull TableDefinition table) {
-		requireKey(table);
-		List<String> values = valueColumns(table);
-		String action = values.isEmpty()
-				? "DO NOTHING"
-				: "DO UPDATE SET " + join(values, ", ", column -> identifier(column) + " = excluded." + identifier(column));
+	protected final @NotNull SqlStatement insertOnConflictDoingNothing(@NotNull TableDefinition table) {
+		return new SqlStatement(insert(table).getSql() + " ON CONFLICT DO NOTHING", columns(table));
+	}
 
-		return new SqlStatement(insert(table).getSql() + " ON CONFLICT " + identifiers(table.getPrimaryKey()) + " " + action, columns(table));
+	/**
+	 * Renders an upsert as PostgreSQL and SQLite write it: for a table whose primary key is
+	 * its only unique key, {@code INSERT ... ON CONFLICT (key) DO UPDATE SET column = excluded.column},
+	 * or with {@code DO NOTHING} when no column is given; for any other table, an
+	 * {@code INSERT ... ON CONFLICT DO NOTHING} followed by an update.
+	 *
+	 * @param table   table to write to
+	 * @param columns columns outside the primary key to update
+	 * @return the upsert
+	 * @throws IllegalArgumentException when the columns cannot be updated
+	 */
+	protected final @NotNull Upsert insertOnConflict(@NotNull TableDefinition table, @NotNull List<String> columns) {
+		requireUpsert(table, columns);
+		if (hasOtherUniqueKeys(table)) return insertThenUpdate(table, columns, insertOnConflictDoingNothing(table));
+		String action = columns.isEmpty()
+				? "DO NOTHING"
+				: "DO UPDATE SET " + join(columns, ", ", column -> identifier(column) + " = excluded." + identifier(column));
+
+		return new Upsert.OnConflict(new SqlStatement(insert(table).getSql() + " ON CONFLICT " + identifiers(table.getPrimaryKey()) + " " + action, columns(table)));
+	}
+
+	/**
+	 * Renders an upsert as an insert and the update of the given columns of the row with the
+	 * primary key, for tables and dialects whose single statement could resolve a conflict on
+	 * another unique key, or a concurrent one, wrongly. Without columns, the update sets the first
+	 * key column to itself, which only tells whether the row exists.
+	 *
+	 * @param table   table to write to
+	 * @param columns columns outside the primary key to update
+	 * @param insert  the insert, which skips the row or fails on a key conflict, parameterized by
+	 *                every column in table order
+	 * @return the upsert, an insert and an update
+	 * @throws IllegalArgumentException when the columns cannot be updated
+	 */
+	protected final @NotNull Upsert insertThenUpdate(@NotNull TableDefinition table, @NotNull List<String> columns, @NotNull SqlStatement insert) {
+		requireUpsert(table, columns);
+		String assignments = columns.isEmpty()
+				? identifier(table.getPrimaryKey().get(0)) + " = " + identifier(table.getPrimaryKey().get(0))
+				: join(columns, ", ", column -> identifier(column) + " = ?");
+		List<String> parameters = new ArrayList<>(columns);
+		parameters.addAll(table.getPrimaryKey());
+
+		return new Upsert.InsertThenUpdate(insert, new SqlStatement("UPDATE " + identifier(table.getName()) + " SET " + assignments
+				+ " WHERE " + keyCondition(table), parameters));
+	}
+
+	/**
+	 * Tells whether a table has a unique key or unique index besides its primary key.
+	 *
+	 * @param table table
+	 * @return whether another key can conflict with an insert
+	 */
+	protected static boolean hasOtherUniqueKeys(@NotNull TableDefinition table) {
+		return !table.getUniqueKeys().isEmpty() || table.getIndexes().stream().anyMatch(index -> index.isUnique());
+	}
+
+	/**
+	 * Refuses an upsert of a table without a primary key, or of columns that cannot be updated.
+	 *
+	 * @param table   table to write to
+	 * @param columns columns outside the primary key to update
+	 * @throws IllegalArgumentException when the table has no primary key, a column belongs to the
+	 *                                  key, a column is not one of the table's, or a column is
+	 *                                  given twice
+	 */
+	protected static void requireUpsert(@NotNull TableDefinition table, @NotNull List<String> columns) {
+		requireKey(table);
+		requireSettable(table, columns);
 	}
 
 	/**
@@ -187,12 +249,14 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 		return joiner.toString();
 	}
 
-	private static void requireColumns(TableDefinition table, List<String> names) {
+	private static void requireSettable(TableDefinition table, List<String> names) {
 		Set<String> seen = new HashSet<>();
 		for (String name : names) {
 			requireColumn(table, name);
 			if (!seen.add(name))
 				throw new IllegalArgumentException("Column " + name + " of " + table.getName() + " is set twice");
+			if (table.getPrimaryKey().contains(name))
+				throw new IllegalArgumentException("Column " + name + " of " + table.getName() + " belongs to the primary key and cannot be set");
 		}
 	}
 
