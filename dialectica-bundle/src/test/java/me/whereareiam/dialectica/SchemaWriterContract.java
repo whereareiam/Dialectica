@@ -1,5 +1,10 @@
 package me.whereareiam.dialectica;
 
+import me.whereareiam.dialectica.entity.annotation.Default;
+import me.whereareiam.dialectica.entity.annotation.Id;
+import me.whereareiam.dialectica.entity.annotation.Length;
+import me.whereareiam.dialectica.entity.annotation.Nullable;
+import me.whereareiam.dialectica.entity.annotation.Table;
 import me.whereareiam.dialectica.fixture.Account;
 import me.whereareiam.dialectica.fixture.AccountReservation;
 import me.whereareiam.dialectica.fixture.Identica221;
@@ -38,9 +43,12 @@ import java.util.Map;
 import java.util.Set;
 import java.util.TreeMap;
 import java.util.TreeSet;
+import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -92,8 +100,22 @@ abstract class SchemaWriterContract {
 					.build())
 			.build();
 
+	@Table("dialectica_preferences")
+	record Preference(
+			@Id @Length(32) String name,
+			@Default("true") boolean enabled,
+			@Default("false") @Nullable Boolean locked,
+			@Default("-9000000000") long since,
+			@Default("3") int attempts,
+			@Default("it's a\\b") String note,
+			@Default("en") @Length(8) String language,
+			@Default(ACCOUNT) UUID owner,
+			@Nullable Long untouched
+	) {
+	}
+
 	private static final List<String> TABLES = List.of(
-			"dialectica_sessions", "dialectica_renamed_links", "dialectica_links", "dialectica_accounts",
+			"dialectica_preferences", "dialectica_sessions", "dialectica_renamed_links", "dialectica_links", "dialectica_accounts",
 			"identica_verification_selections", "identica_provider_profiles", "identica_provider_links",
 			"identica_account_reservations", "identica_accounts"
 	);
@@ -212,6 +234,36 @@ abstract class SchemaWriterContract {
 			assertFalse(row.getBoolean("is_primary"));
 			assertEquals(3, row.getInt("attempts"));
 			assertEquals("it's a\\b", row.getString("note"));
+		}
+	}
+
+	@Test
+	void createsTheDefaultsOfAnEntity() throws SQLException {
+		TableDefinition preferences = Dialectica.entity(Preference.class).table();
+		Dialectica.on(connection).create(Schema.of(preferences));
+		assertMatches(preferences);
+
+		Map<String, String> declared = new HashMap<>();
+		try (ResultSet columns = connection.getMetaData().getColumns(connection.getCatalog(), connection.getSchema(), stored("dialectica_preferences"), "%")) {
+			while (columns.next())
+				declared.put(lower(columns.getString("COLUMN_NAME")), columns.getString("COLUMN_DEF"));
+		}
+		for (ColumnDefinition column : preferences.getColumns())
+			if (column.getDefaultValue() != null) assertNotNull(declared.get(column.getName()), column.getName());
+
+		execute("INSERT INTO dialectica_preferences (name) VALUES ('motd')");
+		try (Statement statement = connection.createStatement();
+		     ResultSet row = statement.executeQuery("SELECT * FROM dialectica_preferences")) {
+			assertTrue(row.next());
+			assertTrue(row.getBoolean("enabled"));
+			assertFalse(row.getBoolean("locked"));
+			assertFalse(row.wasNull());
+			assertEquals(-9_000_000_000L, row.getLong("since"));
+			assertEquals(3, row.getInt("attempts"));
+			assertEquals("it's a\\b", row.getString("note"));
+			assertEquals("en", row.getString("language"));
+			assertEquals(UUID.fromString(ACCOUNT), UUID.fromString(row.getString("owner")));
+			assertNull(row.getObject("untouched"));
 		}
 	}
 
