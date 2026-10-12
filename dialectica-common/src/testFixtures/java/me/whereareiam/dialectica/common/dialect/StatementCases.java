@@ -1,5 +1,7 @@
 package me.whereareiam.dialectica.common.dialect;
 
+import me.whereareiam.dialectica.dialect.Comparison;
+import me.whereareiam.dialectica.dialect.Condition;
 import me.whereareiam.dialectica.dialect.SqlStatement;
 import me.whereareiam.dialectica.dialect.StatementRenderer;
 import me.whereareiam.dialectica.schema.ColumnDefinition;
@@ -66,6 +68,13 @@ public final class StatementCases {
 	}
 
 	/**
+	 * Creates a condition of an update.
+	 */
+	public static Condition condition(String column, Comparison comparison) {
+		return new Condition(column, comparison);
+	}
+
+	/**
 	 * Creates an expected statement.
 	 */
 	public static SqlStatement statement(String sql, String... parameters) {
@@ -77,7 +86,8 @@ public final class StatementCases {
 				"insert reservation", "upsert reservation", "replace reservation", "select reservation", "delete reservation",
 				"insert link", "upsert link", "replace link", "select link", "delete link",
 				"upsert key-only table", "select quoted column",
-				"update reservation conditionally", "update link where a column is null", "update quoted column conditionally"
+				"update reservation conditionally", "update link where a column is null", "update quoted column conditionally",
+				"update reservation within ordered conditions"
 		);
 	}
 
@@ -95,9 +105,15 @@ public final class StatementCases {
 				renderer -> renderer.delete(LINKS),
 				renderer -> renderer.upsert(FLAGS),
 				renderer -> renderer.select(FLAGS),
-				renderer -> renderer.update(RESERVATIONS, List.of("unique_id", "expires_at"), List.of("expires_at"), List.of()),
-				renderer -> renderer.update(LINKS, List.of("is_primary"), List.of(), List.of("unique_id")),
-				renderer -> renderer.update(SETTINGS, List.of("order"), List.of("order"), List.of())
+				renderer -> renderer.update(RESERVATIONS, List.of("unique_id", "expires_at"), List.of(condition("expires_at", Comparison.EQUALS))),
+				renderer -> renderer.update(LINKS, List.of("is_primary"), List.of(condition("unique_id", Comparison.IS_NULL))),
+				renderer -> renderer.update(SETTINGS, List.of("order"), List.of(condition("order", Comparison.EQUALS))),
+				renderer -> renderer.update(RESERVATIONS, List.of("expires_at"), List.of(
+						condition("expires_at", Comparison.BELOW),
+						condition("expires_at", Comparison.ABOVE),
+						condition("created_at", Comparison.AT_MOST),
+						condition("created_at", Comparison.AT_LEAST)
+				))
 		);
 	}
 }

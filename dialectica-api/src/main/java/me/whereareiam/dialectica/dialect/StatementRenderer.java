@@ -42,27 +42,30 @@ public interface StatementRenderer {
 
 	/**
 	 * Renders the update of some columns of the row with a primary key, which changes the row only
-	 * while it matches conditions on its current values:
+	 * while its current values meet conditions:
 	 * <pre>{@code
-	 * UPDATE table SET column = ?, ... WHERE key = ? AND ... AND condition = ? AND ... AND nullCondition IS NULL AND ...
+	 * UPDATE table SET column = ?, ... WHERE key = ? AND ... AND condition AND ...
 	 * }</pre>
-	 * The update is one statement, so of several instances that update the same row under the same
-	 * condition at once, only the first changes it.
+	 * Each condition renders as its {@link Comparison}, such as {@code column = ?},
+	 * {@code column IS NULL} or {@code column < ?}, in the order given. The update is one statement,
+	 * so of several instances that update the same row under the same conditions at once, only the
+	 * first changes it.
 	 *
-	 * @param table          table to update
-	 * @param columns        columns to set, outside the primary key; at least one
-	 * @param conditions     columns that have to equal a value
-	 * @param nullConditions columns that have to be {@code NULL}
-	 * @return the statement, parameterized by the columns to set, then the key, then the conditions
+	 * @param table      table to update
+	 * @param columns    columns to set, outside the primary key; at least one
+	 * @param conditions conditions on the row's current values
+	 * @return the statement, parameterized by the columns to set, then the key, then the columns of
+	 *         the conditions that {@linkplain Comparison#takesValue() take a value}
 	 * @throws IllegalArgumentException when the table has no primary key, no columns are given, a
 	 *                                  column to set belongs to the key, a column is not one of the
-	 *                                  table's or is named twice in one role
+	 *                                  table's, a column is set twice, a condition is given twice,
+	 *                                  or an {@linkplain Comparison#isOrdered() ordered} condition
+	 *                                  compares a column that does not hold numbers
 	 */
 	@NotNull SqlStatement update(
 			@NotNull TableDefinition table,
 			@NotNull List<String> columns,
-			@NotNull List<String> conditions,
-			@NotNull List<String> nullConditions
+			@NotNull List<Condition> conditions
 	);
 
 	/**

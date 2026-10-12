@@ -198,6 +198,73 @@ abstract class EntityAccessContract {
 	}
 
 	@Test
+	void updatesOnlyWhileAnOrderedConditionHolds() {
+		reservations.insert(new AccountReservation("totp:alice", ALICE, 1L, 0L));
+
+		assertTrue(reservations.update("totp:alice").set("expires_at", 5L).whenBelow("expires_at", 5L).execute());
+		assertFalse(reservations.update("totp:alice").set("expires_at", 5L).whenBelow("expires_at", 5L).execute());
+		assertFalse(reservations.update("totp:alice").set("expires_at", 4L).whenBelow("expires_at", 4L).execute());
+		assertTrue(reservations.update("totp:alice").set("expires_at", 6L).whenBelow("expires_at", 6L).execute());
+
+		assertEquals(Optional.of(new AccountReservation("totp:alice", ALICE, 1L, 6L)), reservations.find("totp:alice"));
+	}
+
+	@Test
+	@SuppressWarnings("unchecked")
+	void comparesAboveAtMostAndAtLeastThroughNamesAndTypedColumns() {
+		reservations.insert(new AccountReservation("totp:alice", ALICE, 1L, 5L));
+		EntityColumn<AccountReservation, Long> expiresAt = (EntityColumn<AccountReservation, Long>) reservations.table().column("expires_at");
+
+		assertFalse(reservations.update("totp:alice").set("created_at", 2L).whenAbove("expires_at", 5L).execute());
+		assertTrue(reservations.update("totp:alice").set("created_at", 2L).whenAbove(expiresAt, 4L).execute());
+		assertFalse(reservations.update("totp:alice").set("created_at", 3L).whenAtMost("expires_at", 4L).execute());
+		assertTrue(reservations.update("totp:alice").set("created_at", 3L).whenAtMost(expiresAt, 5L).execute());
+		assertFalse(reservations.update("totp:alice").set("created_at", 4L).whenAtLeast("expires_at", 6L).execute());
+		assertTrue(reservations.update("totp:alice").set("created_at", 4L).whenAtLeast(expiresAt, 5L).execute());
+		assertFalse(reservations.update("totp:alice").set("created_at", 5L).whenAtLeast("expires_at", 1L).whenBelow("expires_at", 5L).execute());
+		assertTrue(reservations.update("totp:alice").set("created_at", 5L).whenAtLeast("expires_at", 1L).whenBelow(expiresAt, 6L).execute());
+
+		assertEquals(Optional.of(new AccountReservation("totp:alice", ALICE, 5L, 5L)), reservations.find("totp:alice"));
+	}
+
+	@Test
+	void meetsNoOrderedConditionWhileTheColumnIsNull() {
+		accounts.insert(new Account(ALICE, "Alice", 1L, null));
+
+		assertFalse(accounts.update(ALICE).set("last_seen_at", 5L).whenBelow("last_seen_at", 5L).execute());
+		assertFalse(accounts.update(ALICE).set("last_seen_at", 5L).whenAtLeast("last_seen_at", Long.MIN_VALUE).execute());
+
+		assertEquals(Optional.of(new Account(ALICE, "Alice", 1L, null)), accounts.find(ALICE));
+	}
+
+	@Test
+	void letsExactlyOneOfTwoConcurrentOrderedUpdatesWin() throws Exception {
+		ExecutorService executor = Executors.newFixedThreadPool(2);
+		try {
+			for (int round = 0; round < 20; round++) {
+				reservations.upsert(new AccountReservation("totp:alice", ALICE, 0L, 4L));
+				CyclicBarrier start = new CyclicBarrier(2);
+				List<Future<Boolean>> updates = new ArrayList<>();
+				for (long contender = 1; contender <= 2; contender++) {
+					long winner = contender;
+					updates.add(executor.submit(() -> {
+						start.await(10, TimeUnit.SECONDS);
+						return reservations.update("totp:alice").set("expires_at", 5L).set("created_at", winner).whenBelow("expires_at", 5L).execute();
+					}));
+				}
+
+				boolean first = updates.get(0).get(30, TimeUnit.SECONDS);
+				boolean second = updates.get(1).get(30, TimeUnit.SECONDS);
+
+				assertTrue(first ^ second, "round " + round + ": first " + first + ", second " + second);
+				assertEquals(new AccountReservation("totp:alice", ALICE, first ? 1L : 2L, 5L), reservations.find("totp:alice").orElseThrow());
+			}
+		} finally {
+			executor.shutdownNow();
+		}
+	}
+
+	@Test
 	void refusesUpdatesThatDoNotFitTheTable() {
 		@SuppressWarnings({"unchecked", "rawtypes"})
 		EntityColumn<Account, Boolean> foreign = (EntityColumn) links.table().column("is_primary");
@@ -211,6 +278,11 @@ abstract class EntityAccessContract {
 		assertThrows(IllegalArgumentException.class, () -> reservations.update("recovery:alice").when("expires_at", 0));
 		assertThrows(IllegalArgumentException.class, () -> accounts.update(ALICE).when("last_seen_at", 1L).when("last_seen_at", 2L));
 		assertThrows(IllegalArgumentException.class, () -> accounts.update(ALICE).when(foreign, true));
+		assertThrows(IllegalArgumentException.class, () -> accounts.update(ALICE).when("last_seen_at", 1L).when("last_seen_at", null));
+		assertThrows(IllegalArgumentException.class, () -> accounts.update(ALICE).whenBelow("username", 1L));
+		assertThrows(IllegalArgumentException.class, () -> accounts.update(ALICE).whenBelow("last_seen_at", 1));
+		assertThrows(IllegalArgumentException.class, () -> accounts.update(ALICE).whenBelow("last_seen_at", 1L).whenBelow("last_seen_at", 2L));
+		assertThrows(IllegalArgumentException.class, () -> reservations.update("recovery:alice").whenAtLeast("unique_id", 1L));
 		assertThrows(IllegalStateException.class, () -> accounts.update(ALICE).when("last_seen_at", null).execute());
 	}
 
