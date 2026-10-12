@@ -85,6 +85,15 @@ public abstract class AnsiDialect implements Dialect {
 		return row.wasNull() ? null : value;
 	}
 
+	/**
+	 * Recognises the SQL standard's state of a unique violation, {@code 23505}, which PostgreSQL and
+	 * H2 report.
+	 */
+	@Override
+	public boolean isKeyConflict(@NotNull SQLException exception) {
+		return "23505".equals(exception.getSQLState());
+	}
+
 	@Override
 	public String toString() {
 		return name();

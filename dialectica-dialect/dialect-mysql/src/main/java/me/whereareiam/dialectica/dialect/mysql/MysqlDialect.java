@@ -58,6 +58,15 @@ public class MysqlDialect extends AnsiDialect {
 		return type instanceof ColumnType.UuidType ? Types.VARCHAR : super.sqlType(type);
 	}
 
+	/**
+	 * Recognises MySQL's and MariaDB's duplicate entry errors, 1062 and 1586. Their state,
+	 * {@code 23000}, also covers other violations, such as a missing referenced row.
+	 */
+	@Override
+	public boolean isKeyConflict(@NotNull SQLException exception) {
+		return exception.getErrorCode() == 1062 || exception.getErrorCode() == 1586;
+	}
+
 	@Override
 	protected char quote() {
 		return '`';

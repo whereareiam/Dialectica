@@ -14,6 +14,8 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static me.whereareiam.dialectica.common.dialect.StatementCases.condition;
+import static me.whereareiam.dialectica.common.dialect.StatementCases.insertThenUpdate;
+import static me.whereareiam.dialectica.common.dialect.StatementCases.onConflict;
 import static me.whereareiam.dialectica.common.dialect.StatementCases.statement;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -27,9 +29,9 @@ class H2StatementRendererTest {
 						"INSERT INTO identica_account_reservations (reservation_key, unique_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
 						"reservation_key", "unique_id", "created_at", "expires_at"
 				),
-				statement(
-						"MERGE INTO identica_account_reservations (reservation_key, unique_id, created_at, expires_at) KEY (reservation_key) VALUES (?, ?, ?, ?)",
-						"reservation_key", "unique_id", "created_at", "expires_at"
+				insertThenUpdate(
+						statement("INSERT INTO identica_account_reservations (reservation_key, unique_id, created_at, expires_at) VALUES (?, ?, ?, ?)", "reservation_key", "unique_id", "created_at", "expires_at"),
+						statement("UPDATE identica_account_reservations SET unique_id = ?, created_at = ?, expires_at = ? WHERE reservation_key = ?", "unique_id", "created_at", "expires_at", "reservation_key")
 				),
 				statement(
 						"UPDATE identica_account_reservations SET unique_id = ?, created_at = ?, expires_at = ? WHERE reservation_key = ?",
@@ -47,9 +49,9 @@ class H2StatementRendererTest {
 						"INSERT INTO identica_provider_links (provider_id, provider_subject, unique_id, is_primary) VALUES (?, ?, ?, ?)",
 						"provider_id", "provider_subject", "unique_id", "is_primary"
 				),
-				statement(
-						"MERGE INTO identica_provider_links (provider_id, provider_subject, unique_id, is_primary) KEY (provider_id, provider_subject) VALUES (?, ?, ?, ?)",
-						"provider_id", "provider_subject", "unique_id", "is_primary"
+				insertThenUpdate(
+						statement("INSERT INTO identica_provider_links (provider_id, provider_subject, unique_id, is_primary) VALUES (?, ?, ?, ?)", "provider_id", "provider_subject", "unique_id", "is_primary"),
+						statement("UPDATE identica_provider_links SET is_primary = ? WHERE provider_id = ? AND provider_subject = ?", "is_primary", "provider_id", "provider_subject")
 				),
 				statement(
 						"UPDATE identica_provider_links SET unique_id = ?, is_primary = ? WHERE provider_id = ? AND provider_subject = ?",
@@ -63,9 +65,9 @@ class H2StatementRendererTest {
 						"DELETE FROM identica_provider_links WHERE provider_id = ? AND provider_subject = ?",
 						"provider_id", "provider_subject"
 				),
-				statement(
-						"MERGE INTO identica_flags (unique_id, \"order\") KEY (unique_id, \"order\") VALUES (?, ?)",
-						"unique_id", "order"
+				insertThenUpdate(
+						statement("INSERT INTO identica_flags (unique_id, \"order\") VALUES (?, ?)", "unique_id", "order"),
+						statement("UPDATE identica_flags SET unique_id = unique_id WHERE unique_id = ? AND \"order\" = ?", "unique_id", "order")
 				),
 				statement(
 						"SELECT unique_id, \"order\" FROM identica_flags WHERE unique_id = ? AND \"order\" = ?",
@@ -86,22 +88,37 @@ class H2StatementRendererTest {
 				statement(
 						"UPDATE identica_account_reservations SET expires_at = ? WHERE reservation_key = ? AND expires_at < ? AND expires_at > ? AND created_at <= ? AND created_at >= ?",
 						"expires_at", "reservation_key", "expires_at", "expires_at", "created_at", "created_at"
+				),
+				statement(
+						"INSERT INTO identica_account_reservations (reservation_key, unique_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+						"reservation_key", "unique_id", "created_at", "expires_at"
+				),
+				insertThenUpdate(
+						statement("INSERT INTO identica_provider_links (provider_id, provider_subject, unique_id, is_primary) VALUES (?, ?, ?, ?)", "provider_id", "provider_subject", "unique_id", "is_primary"),
+						statement("UPDATE identica_provider_links SET is_primary = ? WHERE provider_id = ? AND provider_subject = ?", "is_primary", "provider_id", "provider_subject")
 				)
 		);
 	}
 
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("cases")
-	void renders(String name, Function<StatementRenderer, SqlStatement> render, SqlStatement expected) {
+	void renders(String name, Function<StatementRenderer, Object> render, Object expected) {
 		assertEquals(expected, render.apply(renderer));
 	}
 
 	@Test
 	void refusesToAddressARowWithoutAPrimaryKey() {
-		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.UNKEYED));
+		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.UNKEYED, List.of()));
 		assertThrows(IllegalArgumentException.class, () -> renderer.select(StatementCases.UNKEYED));
 		assertThrows(IllegalArgumentException.class, () -> renderer.delete(StatementCases.UNKEYED));
 		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.UNKEYED, List.of("unique_id"), List.of()));
+	}
+
+	@Test
+	void refusesAnUpsertOfAKeyColumnAnUnknownColumnOrAColumnTwice() {
+		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.RESERVATIONS, List.of("reservation_key")));
+		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.RESERVATIONS, List.of("missing")));
+		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.RESERVATIONS, List.of("expires_at", "expires_at")));
 	}
 
 	@Test

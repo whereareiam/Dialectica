@@ -51,6 +51,11 @@ public class ThirdPartyDialect implements Dialect {
 		throw new UnsupportedOperationException();
 	}
 
+	@Override
+	public boolean isKeyConflict(@NotNull SQLException exception) {
+		return false;
+	}
+
 	/**
 	 * A second dialect that claims one of the same databases.
 	 */
