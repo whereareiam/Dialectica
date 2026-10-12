@@ -19,10 +19,6 @@ template: |
 
   **Full Changelog**: https://github.com/$OWNER/$REPOSITORY/compare/$PREVIOUS_TAG...$RESOLVED_TAG
 
-  # Installation
-
-  Java 17 or newer is required. See the [README](https://github.com/whereareiam/Dialectica#readme) for installation and usage.
-
 categories:
   - type: pre-exclude
     when:
