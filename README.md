@@ -251,7 +251,7 @@ jdbi.installPlugin(new DialecticaPlugin());
 EntityAccess<Account> accounts = EntityAccess.of(jdbi, Dialectica.entity(Account.class));
 accounts.insert(account);
 accounts.upsert(account);
-accounts.update(account);                          // true when a row had the key
+accounts.replace(account);                         // true when a row had the key
 Optional<Account> found = accounts.find(uniqueId);
 accounts.delete(uniqueId);                         // true when a row had the key
 
@@ -275,6 +275,36 @@ The upsert depends on the database:
 
 On MySQL and MariaDB, a taken unique key also turns the insert into an update; elsewhere only the
 primary key does. Every operation but `insert` needs a primary key.
+
+### Updating some columns
+
+`replace` writes every column of the entity. `update` sets only the columns it names, in one
+`UPDATE` statement, without reading the row first:
+
+```java
+accounts.update(uniqueId).set("last_seen_at", now).execute();
+links.update("premium", subject).set("is_primary", true).set("last_seen_at", now).execute();
+```
+
+`when` lets the update change the row only while a column equals a value; `when(column, null)`
+requires the column to be `NULL`. `execute()` returns whether the row with the key existed and
+matched every condition, so a value can be claimed once across instances that share the database:
+
+```java
+boolean used = recoveryCodes.update(uniqueId, code)
+        .set("used_at", now)
+        .when("used_at", 0L)
+        .execute();                                // true for exactly one instance
+```
+
+Columns are named as in the table. `set` and `when` also take the table's `EntityColumn`s, which
+check the value's type at compile time. A value has to have the column's Java type, so a `bigint()`
+column takes `0L`, not `0`. A key column cannot be set, and a `NULL` only goes into a nullable
+column.
+
+MySQL and MariaDB report the rows an update matched, unless the connection sets
+`useAffectedRows=true`. With that option, an update that writes the values the row already holds
+returns `false`.
 
 ### Hand-written queries
 
@@ -303,10 +333,12 @@ Each dialect renders SQL without connecting to the database:
 Dialect dialect = Dialect.of(connection.getMetaData());
 List<String> ddl = dialect.schemaRenderer().render(new CreateTable(accounts));
 SqlStatement upsert = dialect.statementRenderer().upsert(accounts);
+SqlStatement lock = dialect.statementRenderer().update(accounts, List.of("is_locked"), List.of("is_locked"), List.of());
 ```
 
-The renderers and `SqlStatement` are in `me.whereareiam.dialectica.dialect`. Schema statements
-are plain DDL without `IF [NOT] EXISTS`. Entity statements use a positional
+The renderers and `SqlStatement` are in `me.whereareiam.dialectica.dialect`. `replace` renders the
+update of every column outside the key, and `update` of the columns given, with conditions that a
+column equals a parameter or is `NULL`. Schema statements are plain DDL without `IF [NOT] EXISTS`. Entity statements use a positional
 `?` for each column that `SqlStatement.getParameters()` names, and `dialect.bind(...)` binds a
 value the way the database stores it.
 

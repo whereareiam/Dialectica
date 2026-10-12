@@ -8,6 +8,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
 import org.junit.jupiter.params.provider.MethodSource;
 
+import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
@@ -67,6 +68,18 @@ class PostgresqlStatementRendererTest {
 				statement(
 						"SELECT unique_id, \"order\" FROM identica_flags WHERE unique_id = ? AND \"order\" = ?",
 						"unique_id", "order"
+				),
+				statement(
+						"UPDATE identica_account_reservations SET unique_id = ?, expires_at = ? WHERE reservation_key = ? AND expires_at = ?",
+						"unique_id", "expires_at", "reservation_key", "expires_at"
+				),
+				statement(
+						"UPDATE identica_provider_links SET is_primary = ? WHERE provider_id = ? AND provider_subject = ? AND unique_id IS NULL",
+						"is_primary", "provider_id", "provider_subject"
+				),
+				statement(
+						"UPDATE identica_settings SET \"order\" = ? WHERE unique_id = ? AND \"order\" = ?",
+						"order", "unique_id", "order"
 				)
 		);
 	}
@@ -82,10 +95,20 @@ class PostgresqlStatementRendererTest {
 		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.UNKEYED));
 		assertThrows(IllegalArgumentException.class, () -> renderer.select(StatementCases.UNKEYED));
 		assertThrows(IllegalArgumentException.class, () -> renderer.delete(StatementCases.UNKEYED));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.UNKEYED, List.of("unique_id"), List.of(), List.of()));
 	}
 
 	@Test
-	void refusesToUpdateATableWhoseColumnsAllBelongToTheKey() {
-		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.FLAGS));
+	void refusesToReplaceATableWhoseColumnsAllBelongToTheKey() {
+		assertThrows(IllegalArgumentException.class, () -> renderer.replace(StatementCases.FLAGS));
+	}
+
+	@Test
+	void refusesAnUpdateOfNoColumnsAKeyColumnOrAnUnknownColumn() {
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of(), List.of("expires_at"), List.of()));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("reservation_key"), List.of(), List.of()));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("missing"), List.of(), List.of()));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at"), List.of("missing"), List.of()));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at", "expires_at"), List.of(), List.of()));
 	}
 }
