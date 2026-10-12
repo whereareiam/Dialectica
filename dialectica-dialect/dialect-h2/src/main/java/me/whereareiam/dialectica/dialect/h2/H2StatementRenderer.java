@@ -3,11 +3,16 @@ package me.whereareiam.dialectica.dialect.h2;
 import me.whereareiam.dialectica.Dialect;
 import me.whereareiam.dialectica.common.dialect.AnsiStatementRenderer;
 import me.whereareiam.dialectica.dialect.SqlStatement;
+import me.whereareiam.dialectica.dialect.Upsert;
 import me.whereareiam.dialectica.schema.TableDefinition;
 import org.jetbrains.annotations.NotNull;
 
+import java.util.List;
+
 /**
- * Renders H2's entity statements; an upsert is a {@code MERGE INTO ... KEY}.
+ * Renders H2's entity statements. H2 in its default mode has no insert that skips or updates a row
+ * on a conflict, and its {@code MERGE INTO ... KEY} writes every column it lists, so an insert if
+ * absent is a plain insert and an upsert an insert followed by an update.
  */
 public final class H2StatementRenderer extends AnsiStatementRenderer {
 	/**
@@ -20,10 +25,12 @@ public final class H2StatementRenderer extends AnsiStatementRenderer {
 	}
 
 	@Override
-	public @NotNull SqlStatement upsert(@NotNull TableDefinition table) {
-		requireKey(table);
+	public @NotNull SqlStatement insertIfAbsent(@NotNull TableDefinition table) {
+		return insert(table);
+	}
 
-		return new SqlStatement("MERGE INTO " + identifier(table.getName()) + " " + identifiers(columns(table))
-				+ " KEY " + identifiers(table.getPrimaryKey()) + " VALUES " + markers(table), columns(table));
+	@Override
+	public @NotNull Upsert upsert(@NotNull TableDefinition table, @NotNull List<String> columns) {
+		return insertThenUpdate(table, columns, insert(table));
 	}
 }
