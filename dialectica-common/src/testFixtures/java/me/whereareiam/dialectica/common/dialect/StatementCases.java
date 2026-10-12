@@ -4,6 +4,7 @@ import me.whereareiam.dialectica.dialect.Comparison;
 import me.whereareiam.dialectica.dialect.Condition;
 import me.whereareiam.dialectica.dialect.SqlStatement;
 import me.whereareiam.dialectica.dialect.StatementRenderer;
+import me.whereareiam.dialectica.dialect.Upsert;
 import me.whereareiam.dialectica.schema.ColumnDefinition;
 import me.whereareiam.dialectica.schema.TableDefinition;
 import me.whereareiam.dialectica.schema.type.ColumnType;
@@ -35,6 +36,15 @@ public final class StatementCases {
 			.primaryKey("provider_id", "provider_subject")
 			.build();
 
+	public static final TableDefinition UNIQUE_LINKS = TableDefinition.builder("identica_provider_links")
+			.column(ColumnDefinition.builder("provider_id", ColumnType.varchar(64)).notNull().build())
+			.column(ColumnDefinition.builder("provider_subject", ColumnType.varchar(128)).notNull().build())
+			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+			.column(ColumnDefinition.builder("is_primary", ColumnType.bool()).notNull().build())
+			.primaryKey("provider_id", "provider_subject")
+			.unique("unique_id", "provider_id")
+			.build();
+
 	public static final TableDefinition FLAGS = TableDefinition.builder("identica_flags")
 			.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
 			.column(ColumnDefinition.builder("order", ColumnType.varchar(16)).notNull().build())
@@ -57,9 +67,9 @@ public final class StatementCases {
 	/**
 	 * Pairs every case with its expected statement, given in the order of {@link #names()}.
 	 */
-	public static Stream<Arguments> expect(SqlStatement... statements) {
+	public static Stream<Arguments> expect(Object... statements) {
 		List<String> names = names();
-		List<Function<StatementRenderer, SqlStatement>> renders = renders();
+		List<Function<StatementRenderer, Object>> renders = renders();
 		if (statements.length != renders.size())
 			throw new IllegalArgumentException("Expected " + renders.size() + " cases, not " + statements.length);
 
@@ -75,6 +85,20 @@ public final class StatementCases {
 	}
 
 	/**
+	 * Creates an expected upsert of one statement.
+	 */
+	public static Upsert onConflict(String sql, String... parameters) {
+		return new Upsert.OnConflict(statement(sql, parameters));
+	}
+
+	/**
+	 * Creates an expected upsert of an insert and an update.
+	 */
+	public static Upsert insertThenUpdate(SqlStatement insert, SqlStatement update) {
+		return new Upsert.InsertThenUpdate(insert, update);
+	}
+
+	/**
 	 * Creates an expected statement.
 	 */
 	public static SqlStatement statement(String sql, String... parameters) {
@@ -87,23 +111,24 @@ public final class StatementCases {
 				"insert link", "upsert link", "replace link", "select link", "delete link",
 				"upsert key-only table", "select quoted column",
 				"update reservation conditionally", "update link where a column is null", "update quoted column conditionally",
-				"update reservation within ordered conditions"
+				"update reservation within ordered conditions",
+				"insert reservation if absent", "upsert some columns of a link with another unique key"
 		);
 	}
 
-	private static List<Function<StatementRenderer, SqlStatement>> renders() {
+	private static List<Function<StatementRenderer, Object>> renders() {
 		return List.of(
 				renderer -> renderer.insert(RESERVATIONS),
-				renderer -> renderer.upsert(RESERVATIONS),
+				renderer -> renderer.upsert(RESERVATIONS, List.of("unique_id", "created_at", "expires_at")),
 				renderer -> renderer.replace(RESERVATIONS),
 				renderer -> renderer.select(RESERVATIONS),
 				renderer -> renderer.delete(RESERVATIONS),
 				renderer -> renderer.insert(LINKS),
-				renderer -> renderer.upsert(LINKS),
+				renderer -> renderer.upsert(LINKS, List.of("is_primary")),
 				renderer -> renderer.replace(LINKS),
 				renderer -> renderer.select(LINKS),
 				renderer -> renderer.delete(LINKS),
-				renderer -> renderer.upsert(FLAGS),
+				renderer -> renderer.upsert(FLAGS, List.of()),
 				renderer -> renderer.select(FLAGS),
 				renderer -> renderer.update(RESERVATIONS, List.of("unique_id", "expires_at"), List.of(condition("expires_at", Comparison.EQUALS))),
 				renderer -> renderer.update(LINKS, List.of("is_primary"), List.of(condition("unique_id", Comparison.IS_NULL))),
@@ -113,7 +138,9 @@ public final class StatementCases {
 						condition("expires_at", Comparison.ABOVE),
 						condition("created_at", Comparison.AT_MOST),
 						condition("created_at", Comparison.AT_LEAST)
-				))
+				)),
+				renderer -> renderer.insertIfAbsent(RESERVATIONS),
+				renderer -> renderer.upsert(UNIQUE_LINKS, List.of("is_primary"))
 		);
 	}
 }

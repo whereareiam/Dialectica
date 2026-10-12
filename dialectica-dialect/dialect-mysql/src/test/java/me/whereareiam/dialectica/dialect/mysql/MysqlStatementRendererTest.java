@@ -4,6 +4,10 @@ import me.whereareiam.dialectica.common.dialect.StatementCases;
 import me.whereareiam.dialectica.dialect.Comparison;
 import me.whereareiam.dialectica.dialect.SqlStatement;
 import me.whereareiam.dialectica.dialect.StatementRenderer;
+import me.whereareiam.dialectica.schema.ColumnDefinition;
+import me.whereareiam.dialectica.schema.IndexDefinition;
+import me.whereareiam.dialectica.schema.TableDefinition;
+import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.Arguments;
@@ -14,6 +18,8 @@ import java.util.function.Function;
 import java.util.stream.Stream;
 
 import static me.whereareiam.dialectica.common.dialect.StatementCases.condition;
+import static me.whereareiam.dialectica.common.dialect.StatementCases.insertThenUpdate;
+import static me.whereareiam.dialectica.common.dialect.StatementCases.onConflict;
 import static me.whereareiam.dialectica.common.dialect.StatementCases.statement;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -27,7 +33,7 @@ class MysqlStatementRendererTest {
 						"INSERT INTO identica_account_reservations (reservation_key, unique_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
 						"reservation_key", "unique_id", "created_at", "expires_at"
 				),
-				statement(
+				onConflict(
 						"INSERT INTO identica_account_reservations (reservation_key, unique_id, created_at, expires_at) VALUES (?, ?, ?, ?) AS excluded ON DUPLICATE KEY UPDATE unique_id = excluded.unique_id, created_at = excluded.created_at, expires_at = excluded.expires_at",
 						"reservation_key", "unique_id", "created_at", "expires_at"
 				),
@@ -47,8 +53,8 @@ class MysqlStatementRendererTest {
 						"INSERT INTO identica_provider_links (provider_id, provider_subject, unique_id, is_primary) VALUES (?, ?, ?, ?)",
 						"provider_id", "provider_subject", "unique_id", "is_primary"
 				),
-				statement(
-						"INSERT INTO identica_provider_links (provider_id, provider_subject, unique_id, is_primary) VALUES (?, ?, ?, ?) AS excluded ON DUPLICATE KEY UPDATE unique_id = excluded.unique_id, is_primary = excluded.is_primary",
+				onConflict(
+						"INSERT INTO identica_provider_links (provider_id, provider_subject, unique_id, is_primary) VALUES (?, ?, ?, ?) AS excluded ON DUPLICATE KEY UPDATE is_primary = excluded.is_primary",
 						"provider_id", "provider_subject", "unique_id", "is_primary"
 				),
 				statement(
@@ -63,8 +69,8 @@ class MysqlStatementRendererTest {
 						"DELETE FROM identica_provider_links WHERE provider_id = ? AND provider_subject = ?",
 						"provider_id", "provider_subject"
 				),
-				statement(
-						"INSERT INTO identica_flags (unique_id, `order`) VALUES (?, ?) AS excluded ON DUPLICATE KEY UPDATE unique_id = excluded.unique_id",
+				onConflict(
+						"INSERT INTO identica_flags (unique_id, `order`) VALUES (?, ?) AS excluded ON DUPLICATE KEY UPDATE unique_id = unique_id",
 						"unique_id", "order"
 				),
 				statement(
@@ -86,22 +92,52 @@ class MysqlStatementRendererTest {
 				statement(
 						"UPDATE identica_account_reservations SET expires_at = ? WHERE reservation_key = ? AND expires_at < ? AND expires_at > ? AND created_at <= ? AND created_at >= ?",
 						"expires_at", "reservation_key", "expires_at", "expires_at", "created_at", "created_at"
+				),
+				statement(
+						"INSERT INTO identica_account_reservations (reservation_key, unique_id, created_at, expires_at) VALUES (?, ?, ?, ?)",
+						"reservation_key", "unique_id", "created_at", "expires_at"
+				),
+				insertThenUpdate(
+						statement("INSERT INTO identica_provider_links (provider_id, provider_subject, unique_id, is_primary) VALUES (?, ?, ?, ?)", "provider_id", "provider_subject", "unique_id", "is_primary"),
+						statement("UPDATE identica_provider_links SET is_primary = ? WHERE provider_id = ? AND provider_subject = ?", "is_primary", "provider_id", "provider_subject")
 				)
 		);
 	}
 
 	@ParameterizedTest(name = "{0}")
 	@MethodSource("cases")
-	void renders(String name, Function<StatementRenderer, SqlStatement> render, SqlStatement expected) {
+	void renders(String name, Function<StatementRenderer, Object> render, Object expected) {
 		assertEquals(expected, render.apply(renderer));
 	}
 
 	@Test
 	void refusesToAddressARowWithoutAPrimaryKey() {
-		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.UNKEYED));
+		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.UNKEYED, List.of()));
 		assertThrows(IllegalArgumentException.class, () -> renderer.select(StatementCases.UNKEYED));
 		assertThrows(IllegalArgumentException.class, () -> renderer.delete(StatementCases.UNKEYED));
 		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.UNKEYED, List.of("unique_id"), List.of()));
+	}
+
+	@Test
+	void refusesAnUpsertOfAKeyColumnAnUnknownColumnOrAColumnTwice() {
+		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.RESERVATIONS, List.of("reservation_key")));
+		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.RESERVATIONS, List.of("missing")));
+		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.RESERVATIONS, List.of("expires_at", "expires_at")));
+	}
+
+	@Test
+	void insertsThenUpdatesATableWithAUniqueIndex() {
+		TableDefinition indexed = TableDefinition.builder("identica_accounts")
+				.column(ColumnDefinition.builder("unique_id", ColumnType.uuid()).notNull().build())
+				.column(ColumnDefinition.builder("username", ColumnType.varchar(64)).notNull().build())
+				.primaryKey("unique_id")
+				.index(IndexDefinition.unique("identica_accounts_username", "username"))
+				.build();
+
+		assertEquals(insertThenUpdate(
+				statement("INSERT INTO identica_accounts (unique_id, username) VALUES (?, ?)", "unique_id", "username"),
+				statement("UPDATE identica_accounts SET username = ? WHERE unique_id = ?", "username", "unique_id")
+		), renderer.upsert(indexed, List.of("username")));
 	}
 
 	@Test
