@@ -1,10 +1,13 @@
 package me.whereareiam.dialectica.common.dialect;
 
 import me.whereareiam.dialectica.Dialect;
+import me.whereareiam.dialectica.dialect.Comparison;
+import me.whereareiam.dialectica.dialect.Condition;
 import me.whereareiam.dialectica.dialect.SqlStatement;
 import me.whereareiam.dialectica.dialect.StatementRenderer;
 import me.whereareiam.dialectica.schema.ColumnDefinition;
 import me.whereareiam.dialectica.schema.TableDefinition;
+import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.jetbrains.annotations.NotNull;
 
 import java.util.ArrayList;
@@ -52,30 +55,28 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 	public @NotNull SqlStatement update(
 			@NotNull TableDefinition table,
 			@NotNull List<String> columns,
-			@NotNull List<String> conditions,
-			@NotNull List<String> nullConditions
+			@NotNull List<Condition> conditions
 	) {
 		requireKey(table);
 		if (columns.isEmpty())
 			throw new IllegalArgumentException("An update of " + table.getName() + " needs a column to set");
-		requireColumns(table, columns, "set");
-		requireColumns(table, conditions, "compare");
-		requireColumns(table, nullConditions, "compare with NULL");
+		requireColumns(table, columns);
 		for (String column : columns)
 			if (table.getPrimaryKey().contains(column))
 				throw new IllegalArgumentException("Column " + column + " of " + table.getName() + " belongs to the primary key and cannot be set");
+		requireConditions(table, conditions);
 
 		List<String> parameters = new ArrayList<>(columns);
 		parameters.addAll(table.getPrimaryKey());
-		parameters.addAll(conditions);
 
 		StringBuilder sql = new StringBuilder("UPDATE ").append(identifier(table.getName()))
 				.append(" SET ").append(join(columns, ", ", column -> identifier(column) + " = ?"))
 				.append(" WHERE ").append(keyCondition(table));
-		for (String column : conditions)
-			sql.append(" AND ").append(identifier(column)).append(" = ?");
-		for (String column : nullConditions)
-			sql.append(" AND ").append(identifier(column)).append(" IS NULL");
+		for (Condition condition : conditions) {
+			sql.append(" AND ").append(identifier(condition.getColumn())).append(' ').append(operator(condition.getComparison()));
+			if (condition.getComparison().takesValue())
+				parameters.add(condition.getColumn());
+		}
 
 		return new SqlStatement(sql.toString(), parameters);
 	}
@@ -186,15 +187,48 @@ public abstract class AnsiStatementRenderer implements StatementRenderer {
 		return joiner.toString();
 	}
 
-	private static void requireColumns(TableDefinition table, List<String> names, String role) {
-		List<String> columns = columns(table);
+	private static void requireColumns(TableDefinition table, List<String> names) {
 		Set<String> seen = new HashSet<>();
 		for (String name : names) {
-			if (!columns.contains(name))
-				throw new IllegalArgumentException("Table " + table.getName() + " has no column " + name + " to " + role);
+			requireColumn(table, name);
 			if (!seen.add(name))
-				throw new IllegalArgumentException("Column " + name + " of " + table.getName() + " is named twice to " + role);
+				throw new IllegalArgumentException("Column " + name + " of " + table.getName() + " is set twice");
 		}
+	}
+
+	private static void requireConditions(TableDefinition table, List<Condition> conditions) {
+		Set<Condition> seen = new HashSet<>();
+		for (Condition condition : conditions) {
+			ColumnDefinition column = requireColumn(table, condition.getColumn());
+			if (!seen.add(condition))
+				throw new IllegalArgumentException("Condition " + condition + " on " + table.getName() + " is given twice");
+			if (condition.getComparison().isOrdered() && !holdsNumbers(column.getType()))
+				throw new IllegalArgumentException("Column " + column.getName() + " of " + table.getName() + " holds " + column.getType()
+						+ ", which cannot be compared " + condition.getComparison() + "; ordered conditions compare number columns");
+		}
+	}
+
+	private static ColumnDefinition requireColumn(TableDefinition table, String name) {
+		ColumnDefinition column = table.column(name);
+		if (column == null)
+			throw new IllegalArgumentException("Table " + table.getName() + " has no column " + name);
+
+		return column;
+	}
+
+	private static boolean holdsNumbers(ColumnType type) {
+		return type instanceof ColumnType.BigintType || type instanceof ColumnType.IntegerType;
+	}
+
+	private static String operator(Comparison comparison) {
+		return switch (comparison) {
+			case EQUALS -> "= ?";
+			case IS_NULL -> "IS NULL";
+			case BELOW -> "< ?";
+			case ABOVE -> "> ?";
+			case AT_MOST -> "<= ?";
+			case AT_LEAST -> ">= ?";
+		};
 	}
 
 	private String columnList(TableDefinition table) {

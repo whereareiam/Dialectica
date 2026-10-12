@@ -1,6 +1,7 @@
 package me.whereareiam.dialectica.dialect.mysql;
 
 import me.whereareiam.dialectica.common.dialect.StatementCases;
+import me.whereareiam.dialectica.dialect.Comparison;
 import me.whereareiam.dialectica.dialect.SqlStatement;
 import me.whereareiam.dialectica.dialect.StatementRenderer;
 import org.junit.jupiter.api.Test;
@@ -12,6 +13,7 @@ import java.util.List;
 import java.util.function.Function;
 import java.util.stream.Stream;
 
+import static me.whereareiam.dialectica.common.dialect.StatementCases.condition;
 import static me.whereareiam.dialectica.common.dialect.StatementCases.statement;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -80,6 +82,10 @@ class MysqlStatementRendererTest {
 				statement(
 						"UPDATE identica_settings SET `order` = ? WHERE unique_id = ? AND `order` = ?",
 						"order", "unique_id", "order"
+				),
+				statement(
+						"UPDATE identica_account_reservations SET expires_at = ? WHERE reservation_key = ? AND expires_at < ? AND expires_at > ? AND created_at <= ? AND created_at >= ?",
+						"expires_at", "reservation_key", "expires_at", "expires_at", "created_at", "created_at"
 				)
 		);
 	}
@@ -95,7 +101,7 @@ class MysqlStatementRendererTest {
 		assertThrows(IllegalArgumentException.class, () -> renderer.upsert(StatementCases.UNKEYED));
 		assertThrows(IllegalArgumentException.class, () -> renderer.select(StatementCases.UNKEYED));
 		assertThrows(IllegalArgumentException.class, () -> renderer.delete(StatementCases.UNKEYED));
-		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.UNKEYED, List.of("unique_id"), List.of(), List.of()));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.UNKEYED, List.of("unique_id"), List.of()));
 	}
 
 	@Test
@@ -105,10 +111,18 @@ class MysqlStatementRendererTest {
 
 	@Test
 	void refusesAnUpdateOfNoColumnsAKeyColumnOrAnUnknownColumn() {
-		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of(), List.of("expires_at"), List.of()));
-		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("reservation_key"), List.of(), List.of()));
-		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("missing"), List.of(), List.of()));
-		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at"), List.of("missing"), List.of()));
-		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at", "expires_at"), List.of(), List.of()));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of(), List.of(condition("expires_at", Comparison.EQUALS))));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("reservation_key"), List.of()));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("missing"), List.of()));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at"), List.of(condition("missing", Comparison.EQUALS))));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at", "expires_at"), List.of()));
+	}
+
+	@Test
+	void refusesAConditionGivenTwiceOrAnOrderedConditionOnAColumnWithoutNumbers() {
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at"), List.of(condition("expires_at", Comparison.BELOW), condition("expires_at", Comparison.BELOW))));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at"), List.of(condition("unique_id", Comparison.BELOW))));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.RESERVATIONS, List.of("expires_at"), List.of(condition("reservation_key", Comparison.AT_LEAST))));
+		assertThrows(IllegalArgumentException.class, () -> renderer.update(StatementCases.LINKS, List.of("unique_id"), List.of(condition("is_primary", Comparison.ABOVE))));
 	}
 }

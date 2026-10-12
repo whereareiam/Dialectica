@@ -297,7 +297,22 @@ boolean used = recoveryCodes.update(uniqueId, code)
         .execute();                                // true for exactly one instance
 ```
 
-Columns are named as in the table. `set` and `when` also take the table's `EntityColumn`s, which
+`whenBelow`, `whenAbove`, `whenAtMost` and `whenAtLeast` compare a `bigint()` or `integer()` column
+with `<`, `>`, `<=` and `>=`. They let a counter only move forward, again in one statement, so of
+several instances that offer the same value only one gets it accepted:
+
+```java
+boolean accepted = enrollments.update(uniqueId, method)
+        .set("accepted_counter", step)
+        .whenBelow("accepted_counter", step)
+        .execute();                                // false once step or a later one was accepted
+```
+
+A column that is `NULL` meets no ordered condition. A column takes each kind of condition once, so
+`whenAtLeast` and `whenBelow` together bound it from both sides, while `when` and `when(column, null)`
+exclude each other.
+
+Columns are named as in the table. `set` and the conditions also take the table's `EntityColumn`s, which
 check the value's type at compile time. A value has to have the column's Java type, so a `bigint()`
 column takes `0L`, not `0`. A key column cannot be set, and a `NULL` only goes into a nullable
 column.
@@ -333,12 +348,14 @@ Each dialect renders SQL without connecting to the database:
 Dialect dialect = Dialect.of(connection.getMetaData());
 List<String> ddl = dialect.schemaRenderer().render(new CreateTable(accounts));
 SqlStatement upsert = dialect.statementRenderer().upsert(accounts);
-SqlStatement lock = dialect.statementRenderer().update(accounts, List.of("is_locked"), List.of("is_locked"), List.of());
+SqlStatement lock = dialect.statementRenderer().update(accounts, List.of("is_locked"),
+        List.of(new Condition("is_locked", Comparison.EQUALS)));
 ```
 
 The renderers and `SqlStatement` are in `me.whereareiam.dialectica.dialect`. `replace` renders the
-update of every column outside the key, and `update` of the columns given, with conditions that a
-column equals a parameter or is `NULL`. Schema statements are plain DDL without `IF [NOT] EXISTS`. Entity statements use a positional
+update of every column outside the key, and `update` of the columns given, with `Condition`s that
+compare a column by a `Comparison`: equal to a parameter, `NULL`, or, for number columns, below,
+above, at most or at least a parameter. Schema statements are plain DDL without `IF [NOT] EXISTS`. Entity statements use a positional
 `?` for each column that `SqlStatement.getParameters()` names, and `dialect.bind(...)` binds a
 value the way the database stores it.
 
