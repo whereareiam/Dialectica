@@ -68,7 +68,7 @@ public class ProviderLink {
     @Id @Length(128) private String providerSubject;
     @References(entity = Account.class, onDelete = ReferentialAction.CASCADE)
     private UUID uniqueId;
-    @Column("is_primary") private boolean primary;
+    @Column("is_primary") @Default("false") private boolean primary;
     @Nullable private Long linkedAt;
 }
 ```
@@ -82,6 +82,7 @@ Every non-static, non-transient field the type declares is a column, in declarat
 | `@Column("name")` | The column's name; by default the field name in snake_case (`lastSeenAt` → `last_seen_at`) |
 | `@Length(n)` | A `String` stored as `varchar(n)`; a `String` without it is unlimited `text` |
 | `@Nullable` | The column accepts `NULL`; columns refuse it otherwise |
+| `@Default("value")` | The value the column takes when an insert leaves it out, read by the field's type |
 | `@References(entity = X.class, onDelete = ...)` | A foreign key to `X`'s primary key, which must be a single `@Id` field |
 | `@References(table = "name", column = "name", onDelete = ...)` | A foreign key to a column of a table named directly |
 | `@ForeignKey(fields = {"fieldA", "fieldB"}, entity = X.class, onDelete = ...)` | A foreign key over fields to `X`'s whole primary key, one field for each of `X`'s `@Id` fields in their order; repeatable |
@@ -117,6 +118,12 @@ public record Note(
                 onDelete = ReferentialAction.CASCADE) UUID owner
 ) {}
 ```
+
+`@Default` is written as text and read by the field's type: `true` or `false` for a `boolean`, a
+decimal number in range for a `long` or an `int`, text for a `String`, at most its `@Length`, and a
+36-character UUID for a `UUID`. Any other value is refused when the entity is read. A default lets
+an `AddColumn` add a `NOT NULL` column to a table that already holds rows. MySQL accepts the default
+of a `String` field without `@Length` only as an expression, which needs MySQL 8.0.13 or newer.
 
 Any annotation named `Nullable` that is visible at runtime also counts, such as Jakarta's or
 JSR-305's. JetBrains' `@Nullable` is not visible at runtime, so a field carrying only that
