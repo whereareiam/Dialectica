@@ -52,6 +52,17 @@ public final class SqliteDialect extends AnsiDialect {
 		return readUuidAsText(row, column);
 	}
 
+	/**
+	 * Recognises no exception: SQLite's driver reports every refused constraint, a {@code NULL} in a
+	 * {@code NOT NULL} column as well as a taken key, with one code and no state. SQLite's entity
+	 * statements resolve the key conflicts they expect with {@code ON CONFLICT}, so they never need
+	 * to recognise one.
+	 */
+	@Override
+	public boolean isKeyConflict(@NotNull SQLException exception) {
+		return false;
+	}
+
 	@Override
 	protected int sqlType(@NotNull ColumnType type) {
 		return type instanceof ColumnType.UuidType ? Types.VARCHAR : super.sqlType(type);

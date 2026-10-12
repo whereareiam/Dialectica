@@ -96,6 +96,18 @@ public interface Dialect {
 	@Nullable Object read(@NotNull ResultSet row, int column, @NotNull ColumnType type) throws SQLException;
 
 	/**
+	 * Tells whether an exception reports that a statement was refused because a row already holds
+	 * a primary key or unique key value the statement writes. The entity statements that resolve a
+	 * conflict by failing, the {@link StatementRenderer#insertIfAbsent(me.whereareiam.dialectica.schema.TableDefinition) insert if absent}
+	 * of MySQL, MariaDB and H2 and the {@link me.whereareiam.dialectica.dialect.Upsert.InsertThenUpdate insert of an upsert},
+	 * fail with an exception this recognises.
+	 *
+	 * @param exception exception a statement failed with
+	 * @return whether it reports a key conflict
+	 */
+	boolean isKeyConflict(@NotNull SQLException exception);
+
+	/**
 	 * Returns the dialects that the class loader of Dialectica's API can see.
 	 *
 	 * @return the available dialects, in discovery order
