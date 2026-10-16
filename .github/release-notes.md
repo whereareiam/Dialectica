@@ -1,13 +1,7 @@
 ---
-version: 4.0.0
+version: 4.0.1
 ---
 
-# Dialectica 4.0.0 - Safe Writes
+# Dialectica 4.0.1 - Key Conflicts on Updates
 
-Entities can now be updated column by column, only while conditions on the row hold, inserted only if absent, and upserted on just the columns that change, each in a way that stays correct when several instances write the same row at once. Entity fields can also declare column defaults.
-
-## Upgrading
-
-- `EntityAccess.update(entity)`, which rewrites every column of a row, is now `replace(entity)`. `update(key...)` starts a partial update instead.
-- A third-party `StatementRenderer` renders updates from one list of conditions, each with its comparison, and returns an `Upsert` for upserts. A third-party `Dialect` implements `isKeyConflict(SQLException)`.
-- An upsert that clashes on a unique key other than the primary key throws `KeyConflictException` on every database.
+An update that would give a row a unique key another row already holds now throws `KeyConflictException` on every database, SQLite included, as inserts and upserts already did. A project can tell a taken key apart from other failures of an update and answer it, for example by reporting the key as taken.
