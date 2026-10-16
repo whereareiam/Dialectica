@@ -194,6 +194,23 @@ abstract class EntityAccessContract {
 	}
 
 	@Test
+	void failsAnUpdateThatTakesAnotherUniqueKey() {
+		accounts.insert(new Account(ALICE, "Alice", null, null));
+		accounts.insert(new Account(BOB, "Bob", null, null));
+		ProviderLink alice = new ProviderLink("premium", "alice-subject", ALICE, true, 10L, null);
+		ProviderLink bob = new ProviderLink("premium", "bob-subject", BOB, true, 20L, null);
+		links.insert(alice);
+		links.insert(bob);
+
+		KeyConflictException conflict = assertThrows(KeyConflictException.class,
+				() -> links.update("premium", "bob-subject").set("unique_id", ALICE).execute());
+		assertEquals("identica_provider_links", conflict.getTable());
+
+		assertEquals(Optional.of(alice), links.find("premium", "alice-subject"));
+		assertEquals(Optional.of(bob), links.find("premium", "bob-subject"));
+	}
+
+	@Test
 	void letsTwoConcurrentUpsertsOfAKeyBothSucceed() throws Exception {
 		accounts.insert(new Account(ALICE, "Alice", null, null));
 		ExecutorService executor = Executors.newFixedThreadPool(2);

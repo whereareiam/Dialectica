@@ -253,9 +253,15 @@ public final class EntityAccess<T> {
 	 * @param statement statement to run
 	 * @param arguments values of its parameters, in order
 	 * @return the number of rows the statement matched
+	 * @throws KeyConflictException when the statement would give a row a unique key another row holds
 	 */
 	int execute(SqlStatement statement, List<Argument> arguments) {
-		return jdbi.withHandle(handle -> bind(handle.createUpdate(statement.getSql()), arguments).execute());
+		try {
+			return jdbi.withHandle(handle -> bind(handle.createUpdate(statement.getSql()), arguments).execute());
+		} catch (StatementException e) {
+			if (isKeyConflict(e)) throw new KeyConflictException(table.table().getName(), e);
+			throw e;
+		}
 	}
 
 	/**

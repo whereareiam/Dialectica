@@ -294,8 +294,8 @@ if (credentials.insertIfAbsent(new CredentialAccount(uniqueId, username, hash)))
 MySQL's `INSERT IGNORE` would also skip or alter rows for other errors, and its
 `ON DUPLICATE KEY UPDATE` reports a kept row like an inserted one, so neither is used. A failed insert
 does not end a transaction on MySQL, MariaDB or H2. `dialect.isKeyConflict(exception)` tells
-whether an exception reports a taken key; on SQLite it never does, because SQLite's driver reports
-every refused constraint alike.
+whether an exception reports a taken key; on SQLite it reads the driver's extended result code,
+because the plain code is the same for every refused constraint.
 
 ### Upserting
 
@@ -352,6 +352,17 @@ boolean accepted = enrollments.update(uniqueId, method)
         .set("accepted_counter", step)
         .whenBelow("accepted_counter", step)
         .execute();                                // false once step or a later one was accepted
+```
+
+An update that would give the row a unique key another row holds fails with a
+`KeyConflictException`, as an upsert does, so a caller can tell a taken value from any other failure:
+
+```java
+try {
+    usernames.update(uniqueId).set("username_key", key).execute();
+} catch (KeyConflictException taken) {
+    // another row holds the key
+}
 ```
 
 A column that is `NULL` meets no ordered condition. A column takes each kind of condition once, so
