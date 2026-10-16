@@ -6,6 +6,8 @@ import me.whereareiam.dialectica.dialect.StatementRenderer;
 import me.whereareiam.dialectica.schema.type.ColumnType;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
+import org.sqlite.SQLiteErrorCode;
+import org.sqlite.SQLiteException;
 
 import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
@@ -53,14 +55,16 @@ public final class SqliteDialect extends AnsiDialect {
 	}
 
 	/**
-	 * Recognises no exception: SQLite's driver reports every refused constraint, a {@code NULL} in a
-	 * {@code NOT NULL} column as well as a taken key, with one code and no state. SQLite's entity
-	 * statements resolve the key conflicts they expect with {@code ON CONFLICT}, so they never need
-	 * to recognise one.
+	 * Recognises a taken primary or unique key by the driver's extended result code. The plain error
+	 * code and the state are the same for every refused constraint, a {@code NULL} in a
+	 * {@code NOT NULL} column as well as a taken key, so only the extended code tells them apart.
 	 */
 	@Override
 	public boolean isKeyConflict(@NotNull SQLException exception) {
-		return false;
+		if (!(exception instanceof SQLiteException sqlite)) return false;
+
+		SQLiteErrorCode code = sqlite.getResultCode();
+		return code == SQLiteErrorCode.SQLITE_CONSTRAINT_UNIQUE || code == SQLiteErrorCode.SQLITE_CONSTRAINT_PRIMARYKEY;
 	}
 
 	@Override

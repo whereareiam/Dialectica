@@ -225,6 +225,8 @@ public final class EntityUpdate<T> {
 	 *
 	 * @return whether the row with the key existed and matched every condition
 	 * @throws IllegalStateException when no column is set
+	 * @throws me.whereareiam.dialectica.exception.KeyConflictException when the update would give the row one of
+	 *                                                                  the entity's unique keys another row holds
 	 */
 	public boolean execute() {
 		if (values.isEmpty())
